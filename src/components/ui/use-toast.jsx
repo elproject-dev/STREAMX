@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 
 const TOAST_LIMIT = 20;
-const TOAST_REMOVE_DELAY = 1000000;
+const TOAST_REMOVE_DELAY = 5000;
 
 const actionTypes = {
   ADD_TOAST: "ADD_TOAST",
@@ -20,7 +20,7 @@ function genId() {
 
 const toastTimeouts = new Map();
 
-const addToRemoveQueue = (toastId) => {
+const addToRemoveQueue = (toastId, duration) => {
   if (toastTimeouts.has(toastId)) {
     return;
   }
@@ -31,7 +31,7 @@ const addToRemoveQueue = (toastId) => {
       type: actionTypes.REMOVE_TOAST,
       toastId,
     });
-  }, TOAST_REMOVE_DELAY);
+  }, duration || TOAST_REMOVE_DELAY);
 
   toastTimeouts.set(toastId, timeout);
 };
@@ -61,15 +61,15 @@ export const reducer = (state, action) => {
       };
 
     case actionTypes.DISMISS_TOAST: {
-      const { toastId } = action;
+      const { toastId, duration } = action;
 
       // ! Side effects ! - This could be extracted into a dismissToast() action,
       // but I'll keep it here for simplicity
       if (toastId) {
-        addToRemoveQueue(toastId);
+        addToRemoveQueue(toastId, duration);
       } else {
         state.toasts.forEach((toast) => {
-          addToRemoveQueue(toast.id);
+          addToRemoveQueue(toast.id, duration);
         });
       }
 
@@ -120,7 +120,7 @@ function toast({ ...props }) {
     });
 
   const dismiss = () =>
-    dispatch({ type: actionTypes.DISMISS_TOAST, toastId: id });
+    dispatch({ type: actionTypes.DISMISS_TOAST, toastId: id, duration: props.duration });
 
   dispatch({
     type: actionTypes.ADD_TOAST,
@@ -133,6 +133,13 @@ function toast({ ...props }) {
       },
     },
   });
+
+  // Jika ada properti duration, otomatis dismiss setelah waktu tersebut
+  if (props.duration) {
+    setTimeout(() => {
+      dismiss();
+    }, props.duration);
+  }
 
   return {
     id,

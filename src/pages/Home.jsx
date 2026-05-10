@@ -1,19 +1,14 @@
-import React from 'react';
-import { base44 } from '@/api/base44Client';
-import { useQuery } from '@tanstack/react-query';
-import { Flame, Clock, Film, Tv, BookOpen, Sparkles } from 'lucide-react';
-import HeroBanner from '@/components/home/HeroBanner';
+import React, { useEffect, useState } from 'react';
+import { VideoStore } from '@/lib/videoStore';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Flame, Clock, Film, Plus, Search, X, Star } from 'lucide-react';
 import VideoRow from '@/components/home/VideoRow';
 import { Skeleton } from '@/components/ui/skeleton';
-
-const categoryConfig = {
-  film: { label: 'Film', icon: Film },
-  series: { label: 'Series', icon: Tv },
-  documentary: { label: 'Dokumenter', icon: BookOpen },
-  animation: { label: 'Animasi', icon: Sparkles },
-  short_film: { label: 'Film Pendek', icon: Film },
-  music_video: { label: 'Video Musik', icon: Film },
-};
+import { motion } from 'framer-motion';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { useFavorites } from '@/lib/FavoritesContext';
+import { useLanguage } from '@/lib/i18n';
 
 function LoadingSkeleton() {
   return (
@@ -36,64 +31,149 @@ function LoadingSkeleton() {
 }
 
 export default function Home() {
+  const [homeSearchQuery, setHomeSearchQuery] = useState('');
+  const queryClient = useQueryClient();
   const { data: videos = [], isLoading } = useQuery({
     queryKey: ['videos'],
-    queryFn: () => base44.entities.Video.list('-created_date', 100),
+    queryFn: () => VideoStore.list('-created_date', 100),
+    refetchOnWindowFocus: true,
   });
+
+  useEffect(() => {
+    VideoStore.migrateScores().then((changed) => {
+      if (changed) {
+        queryClient.invalidateQueries({ queryKey: ['videos'] });
+        queryClient.refetchQueries({ queryKey: ['videos'] });
+      }
+    });
+  }, []);
+
+  const [todayPicks, setTodayPicks] = useState([]);
+
+  useEffect(() => {
+    if (videos.length > 0 && todayPicks.length === 0) {
+      setTodayPicks(shuffleArray([...videos]).slice(0, 21));
+    }
+  }, [videos]);
+
+  const { favorites: favoriteVideos } = useFavorites();
+  const { t } = useLanguage();
 
   if (isLoading) return <LoadingSkeleton />;
 
-  const featuredVideo = videos.find(v => v.is_featured) || videos[0];
-  const recentVideos = [...videos].sort((a, b) => new Date(b.created_date) - new Date(a.created_date)).slice(0, 15);
-  const popularVideos = [...videos].sort((a, b) => (b.view_count || 0) - (a.view_count || 0)).slice(0, 15);
-
-  // Group by category
-  const categories = {};
-  videos.forEach(v => {
-    if (v.category) {
-      if (!categories[v.category]) categories[v.category] = [];
-      categories[v.category].push(v);
+  // Helper function to shuffle array
+  const shuffleArray = (array) => {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
-  });
+    return shuffled;
+  };
+
+  const filteredVideos = videos.filter(v => 
+    v.title?.toLowerCase().includes(homeSearchQuery.toLowerCase()) ||
+    v.description?.toLowerCase().includes(homeSearchQuery.toLowerCase()) ||
+    v.genre?.toLowerCase().includes(homeSearchQuery.toLowerCase())
+  );
+
+  const recentVideos = todayPicks.length > 0 ? todayPicks : shuffleArray([...filteredVideos]).slice(0, 21);
+  const popularVideos = [...filteredVideos].sort((a, b) => (b.view_count || 0) - (a.view_count || 0));
+  const newlyAddedVideos = [...filteredVideos].sort((a, b) => Number(new Date(b.created_date)) - Number(new Date(a.created_date)));
+
+  if (videos.length === 0) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-1/2 -left-1/4 w-[600px] h-[600px] bg-primary/5 rounded-full blur-3xl" />
+          <div className="absolute -bottom-1/2 -right-1/4 w-[500px] h-[500px] bg-primary/3 rounded-full blur-3xl" />
+        </div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: 'easeOut' }}
+          className="relative text-center px-6 max-w-lg"
+        >
+          <div className="relative inline-block mb-8">
+            <div className="w-28 h-28 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
+              <Film className="w-14 h-14 text-primary" />
+            </div>
+            <div className="absolute -top-1 -right-1 w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+              <Plus className="w-4 h-4 text-primary" />
+            </div>
+          </div>
+
+          <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-3">
+            {t('home.no_videos')}
+          </h1>
+          <p className="text-muted-foreground text-base md:text-lg mb-8 leading-relaxed">
+            {t('home.no_videos_desc')}
+          </p>
+
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
-      <HeroBanner video={featuredVideo} />
-
-      <div className="-mt-16 relative z-10 pb-20">
-        {recentVideos.length > 0 && (
-          <VideoRow title="Baru Ditambahkan" videos={recentVideos} icon={Clock} />
-        )}
+      <div className="pt-20 md:pt-24 pb-10">
+        {/* Search Header */}
+        <div className="w-full px-4 md:px-10 mb-8 flex flex-col items-start gap-1">
+          <div className="relative w-full max-w-full">
+            <Input
+              value={homeSearchQuery}
+              onChange={(e) => setHomeSearchQuery(e.target.value)}
+              placeholder={t('home.search_placeholder')}
+              className="pl-4 h-11 bg-card/50 backdrop-blur-sm border-white/10 focus:border-primary/50 transition-all rounded-xl text-left"
+            />
+            {homeSearchQuery && (
+              <button 
+                onClick={() => setHomeSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-secondary rounded-full transition-colors"
+              >
+                <X className="w-4 h-4 text-muted-foreground" />
+              </button>
+            )}
+          </div>
+          {homeSearchQuery && (
+            <p className="text-sm text-muted-foreground mt-2 animate-in fade-in slide-in-from-top-1 px-1">
+              {t('home.search_results', { count: filteredVideos.length, query: homeSearchQuery })}
+            </p>
+          )}
+        </div>
 
         {popularVideos.length > 0 && (
-          <VideoRow title="Paling Populer" videos={popularVideos} icon={Flame} />
+          <VideoRow title={t('home.popular')} videos={popularVideos} icon={Flame} isSlider={true} />
         )}
 
-        {Object.entries(categories).map(([cat, catVideos]) => {
-          const config = categoryConfig[cat] || { label: cat, icon: Film };
-          return (
-            <VideoRow
-              key={cat}
-              title={config.label}
-              videos={catVideos}
-              icon={config.icon}
-            />
-          );
-        })}
+        {recentVideos.length > 0 && (
+          <VideoRow title={t('home.today_pick')} videos={recentVideos} icon={Clock} isSlider={false} />
+        )}
 
-        {videos.length === 0 && (
-          <div className="max-w-[1400px] mx-auto px-4 md:px-8 pt-20 text-center">
-            <Film className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-foreground mb-2">Belum Ada Video</h2>
+        {newlyAddedVideos.length > 0 && (
+          <VideoRow title={t('home.newly_added')} videos={newlyAddedVideos} icon={Clock} isSlider={true} />
+        )}
+
+        {favoriteVideos.length > 0 && (
+          <VideoRow title={t('home.my_favorites')} videos={favoriteVideos} icon={Star} isSlider={true} />
+        )}
+
+        {filteredVideos.length === 0 && videos.length > 0 && (
+          <div className="text-center py-20">
+            <Search className="w-16 h-16 text-muted-foreground mx-auto mb-4 opacity-20" />
+            <h3 className="text-xl font-bold text-foreground mb-2">{t('home.no_results')}</h3>
             <p className="text-muted-foreground mb-6">
-              Mulai tambahkan video dari Google Drive untuk membangun koleksi Anda.
+              {t('home.no_results_desc', { query: homeSearchQuery })}
             </p>
-            <a
-              href="/manage"
-              className="inline-flex items-center gap-2 px-6 py-3 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-lg transition-colors"
+            <Button 
+              variant="outline" 
+              onClick={() => setHomeSearchQuery('')}
+              className="rounded-full"
             >
-              Tambah Video
-            </a>
+              {t('home.clear_search')}
+            </Button>
           </div>
         )}
       </div>

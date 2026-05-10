@@ -1,6 +1,8 @@
 #env
 .env
 .env.*
+.android
+.env.local
 
 # Logs
 /logs
@@ -11,10 +13,46 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
+# Dependency folders
+node_modules/
+jspm_packages/
+.npm/
+
+# Build outputs
+dist/
+dist-ssr/
 *.local
+src-tauri/target/
+android/app/build/
+android/.gradle/
+android/app/src/main/assets/public/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+supabase/.temp/
+
+# IDE files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.windsurf/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Mobile related
+*.keystore
+*.jks
+google-services.json
 
 # Editor directories and files
 .vscode/*
@@ -29,3 +67,6 @@ dist-ssr
 
 .env
 .vite
+
+.vercel
+.env*.local

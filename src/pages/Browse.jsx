@@ -1,5 +1,5 @@
 import React from 'react';
-import { base44 } from '@/api/base44Client';
+import { VideoStore } from '@/lib/videoStore';
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import { Film, Tv, BookOpen, Sparkles } from 'lucide-react';
@@ -21,8 +21,8 @@ export default function Browse() {
   const { data: videos = [], isLoading } = useQuery({
     queryKey: ['videos-browse', category],
     queryFn: () => category
-      ? base44.entities.Video.filter({ category }, '-created_date', 100)
-      : base44.entities.Video.list('-created_date', 100),
+      ? VideoStore.filter({ category }, '-created_date', 100)
+      : VideoStore.list('-created_date', 100),
   });
 
   const meta = categoryMeta[category] || { label: 'Semua Video', icon: Film, description: 'Jelajahi semua video' };
