@@ -3,7 +3,7 @@ import { supabase } from './supabase';
 const STORAGE_KEY = 'streamx_videos';
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 const TMDB_IMG = 'https://image.tmdb.org/t/p';
-const OMDB_API_KEY = '4a3b711b';
+const OMDB_API_KEY = '5e9c0c32'; // Menggunakan API Key yang lebih stabil
 
 function getTmdbFetchOptions() {
   const env = import.meta.env;
@@ -83,15 +83,20 @@ export async function fetchTmdbData(tmdbId, contentType) {
           const omdbRes = await fetch(`https://www.omdbapi.com/?apikey=${OMDB_API_KEY}&i=${extData.imdb_id}`);
           if (omdbRes.ok) {
             const omdbData = await omdbRes.json();
-            if (omdbData.imdbRating && omdbData.imdbRating !== 'N/A') {
-              result.imdb_score = parseFloat(omdbData.imdbRating);
-              result.imdb_votes = omdbData.imdbVotes?.replace(/,/g, '') || '';
+            // Cek jika response OMDB sukses
+            if (omdbData.Response !== "False") {
+              if (omdbData.imdbRating && omdbData.imdbRating !== 'N/A') {
+                result.imdb_score = parseFloat(omdbData.imdbRating);
+                result.imdb_votes = omdbData.imdbVotes?.replace(/,/g, '') || '';
+              }
+              if (omdbData.Rated && omdbData.Rated !== 'N/A' && !result.rating) result.rating = omdbData.Rated;
             }
-            if (omdbData.Rated && omdbData.Rated !== 'N/A' && !result.rating) result.rating = omdbData.Rated;
           }
         }
       }
-    } catch {}
+    } catch (err) {
+      console.warn('OMDB Fetch Error:', err);
+    }
 
     return result;
   } catch { return {}; }

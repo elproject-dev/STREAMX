@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from 'sonner';
 
 const RATINGS = ['PG-13'];
 
@@ -22,7 +22,6 @@ const emptyForm = {
 };
 
 export default function Manage() {
-  const { toast } = useToast();
   const [showForm, setShowForm] = useState(false);
   const [editingVideo, setEditingVideo] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -35,7 +34,7 @@ export default function Manage() {
 
   const { data: videosManage = [], isLoading } = useQuery({
     queryKey: ['videos-manage'],
-    queryFn: () => VideoStore.list('-created_date', 200),
+    queryFn: () => VideoStore.list('-created_date', null),
     refetchOnWindowFocus: true,
   });
 
@@ -49,20 +48,11 @@ export default function Manage() {
       queryClient.invalidateQueries({ queryKey: ['videos'] });
       resetForm();
       setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
-      toast({
-        title: "Berhasil",
-        description: "Video berhasil ditambahkan!",
-        duration: 3000,
-      });
+      toast.success("Video berhasil ditambahkan!");
     },
     onError: (error) => {
       console.error('Create error:', error);
-      toast({
-        variant: "destructive",
-        title: "Gagal Menambahkan",
-        description: error.message,
-        duration: 3000,
-      });
+      toast.error(error.message);
     }
   });
 
@@ -74,20 +64,11 @@ export default function Manage() {
       queryClient.invalidateQueries({ queryKey: ['videos'] });
       resetForm();
       setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
-      toast({
-        title: "Berhasil",
-        description: "Video berhasil diperbarui!",
-        duration: 3000,
-      });
+      toast.success("Video berhasil diperbarui!");
     },
     onError: (error) => {
       console.error('Update error:', error);
-      toast({
-        variant: "destructive",
-        title: "Gagal Memperbarui",
-        description: error.message,
-        duration: 3000,
-      });
+      toast.error(error.message);
     }
   });
 
@@ -96,11 +77,7 @@ export default function Manage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['videos-manage'] });
       queryClient.invalidateQueries({ queryKey: ['videos'] });
-      toast({
-        title: "Terhapus",
-        description: "Video berhasil dihapus!",
-        duration: 3000,
-      });
+      toast.success("Video berhasil dihapus!");
     },
   });
 
@@ -137,6 +114,63 @@ export default function Manage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const [checkingServer, setCheckingServer] = useState(false);
+
+  const handleCheckServer = async (tmdbId, contentType) => {
+    if (!tmdbId) return;
+    
+    // Validasi: Cek apakah user memasukkan IMDb ID (dimulai dengan 'tt')
+    if (tmdbId.startsWith('tt')) {
+      toast.error("Anda memasukkan IMDb ID (dimulai dengan 'tt'). Silakan gunakan TMDB ID (angka saja).");
+      return;
+    }
+
+    // Validasi: Pastikan ID hanya berisi angka
+    if (!/^[0-9]+$/.test(tmdbId)) {
+      toast.error("TMDB ID harus berupa angka saja. Contoh: 550");
+      return;
+    }
+
+    setCheckingServer(true);
+    
+    try {
+      const baseUrl = 'https://vidsrcme.ru/embed/';
+      const checkUrl = contentType === 'tv' 
+        ? `${baseUrl}tv?tmdb=${tmdbId}&season=1&episode=1`
+        : `${baseUrl}movie?tmdb=${tmdbId}`;
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 detik timeout
+
+      try {
+        const response = await fetch(checkUrl, { 
+          signal: controller.signal,
+          headers: { 'Referer': 'https://vidsrcme.ru/' }
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          toast.success("Video tersedia dan dapat diputar.");
+        } else if (response.status === 404) {
+          toast.error("Film ini belum tersedia di server streaming (404).");
+        } else {
+          toast.error(`Server merespon dengan status ${response.status}.`);
+        }
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          throw new Error("Server streaming terlalu lambat merespon (Timeout).");
+        }
+        throw err;
+      }
+    } catch (error) {
+      console.error('Check Server Error:', error);
+      toast.error(error.message || "Terjadi kesalahan saat menghubungi server.");
+    } finally {
+      setCheckingServer(false);
+    }
+  };
+
   const handleFetchTmdb = async (tmdbId, contentType) => {
     if (!tmdbId) return;
     setFetchingTmdb(true);
@@ -164,18 +198,10 @@ export default function Manage() {
         backdrop_url: tmdbData.backdrop_url || prev.backdrop_url || '',
       }));
       setFetchingTmdb(false);
-      toast({
-        title: "Data Ditemukan",
-        description: "Data TMDB berhasil diambil!",
-        duration: 3000,
-      });
+      toast.success("Data TMDB berhasil diambil!");
     } catch (error) {
       console.error(error);
-      toast({
-        variant: "destructive",
-        title: "Kesalahan",
-        description: "Terjadi kesalahan saat mengambil data",
-      });
+      toast.error("Terjadi kesalahan saat mengambil data");
       setFetchingTmdb(false);
     }
   };
@@ -195,12 +221,7 @@ export default function Manage() {
       
       if (isDuplicate) {
         console.warn('Duplicate TMDB ID found!');
-        toast({
-          variant: "destructive",
-          title: "TMDB ID Sudah Ada",
-          description: `Video dengan ID ${form.tmdb_id} sudah terdaftar di koleksi Anda.`,
-          duration: 3000,
-        });
+        toast.error(`Video dengan ID ${form.tmdb_id} sudah terdaftar di koleksi Anda.`);
         return;
       }
     }
@@ -245,12 +266,7 @@ export default function Manage() {
       console.log('Mutation initiated');
     } catch (err) {
       console.error('Error during submission:', err);
-      toast({
-        variant: "destructive",
-        title: "Kesalahan",
-        description: "Terjadi kesalahan saat memproses data",
-        duration: 3000,
-      });
+      toast.error("Terjadi kesalahan saat memproses data");
     }
   };
 
@@ -339,25 +355,34 @@ export default function Manage() {
                   </div>
                   <div className="space-y-2">
                     <Label>TMDB ID</Label>
+                    <Input
+                      value={form.tmdb_id}
+                      onChange={(e) => setForm({ ...form, tmdb_id: e.target.value })}
+                      placeholder="Contoh: 927085"
+                      className="h-11"
+                    />
                     <div className="flex gap-2">
-                      <Input
-                        value={form.tmdb_id}
-                        onChange={(e) => setForm({ ...form, tmdb_id: e.target.value })}
-                        placeholder="Contoh: 927085"
-                        className="h-11"
-                      />
                       <Button
                         type="button"
                         variant="outline"
-                        className="h-11 px-6 shrink-0"
+                        className="h-11 px-6 flex-1"
                         onClick={() => handleFetchTmdb(form.tmdb_id, form.content_type)}
                         disabled={fetchingTmdb || !form.tmdb_id}
                       >
                         {fetchingTmdb ? '...' : 'Ambil Data'}
                       </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="h-11 px-6 flex-1"
+                        onClick={() => handleCheckServer(form.tmdb_id, form.content_type)}
+                        disabled={checkingServer || !form.tmdb_id}
+                      >
+                        {checkingServer ? '...' : 'Cek Server'}
+                      </Button>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      ID dari themoviedb.org — otomatis mengambil data setelah 1.2 detik
+                      ID dari themoviedb.org
                     </p>
                   </div>
                 </div>

@@ -187,13 +187,11 @@ export default function Watch() {
         });
         
         if (!filePath) {
-          toast.info(t('watch.subtitle_download_fail'));
           return;
         }
 
         const { writeFile } = await import('@tauri-apps/plugin-fs');
         await writeFile(filePath, uint8);
-        toast.success(t('watch.subtitle_saved'));
       } else if (Capacitor.isNativePlatform()) {
         // Android/iOS: simpan file via Capacitor Filesystem lalu Share
         const arrayBuffer = await res.arrayBuffer();
@@ -203,12 +201,18 @@ export default function Watch() {
           throw new Error(t('watch.subtitle_invalid'));
         }
 
-        // Konversi ke base64
-        let binary = '';
-        uint8.forEach((byte) => { binary += String.fromCharCode(byte); });
-        const base64Data = btoa(binary);
+        // Konversi ke base64 (cara yang lebih aman untuk memori)
+        let base64Data = '';
+        const bytes = new Uint8Array(arrayBuffer);
+        for (let i = 0; i < bytes.byteLength; i++) {
+          base64Data += String.fromCharCode(bytes[i]);
+        }
+        base64Data = btoa(base64Data);
 
-        // Simpan file ke storage
+        const { Filesystem, Directory } = await import('@capacitor/filesystem');
+        const { Share } = await import('@capacitor/share');
+
+        // Simpan file ke cache sementara
         const result = await Filesystem.writeFile({
           path: fileName,
           data: base64Data,
@@ -218,12 +222,9 @@ export default function Watch() {
         // Share file agar user bisa save ke lokasi yang diinginkan
         await Share.share({
           title: t('watch.subtitle'),
-          text: fileName,
-          url: result.uri,
+          files: [result.uri],
           dialogTitle: t('watch.save_subtitle'),
         });
-
-        toast.success(t('watch.subtitle_downloaded'));
       } else {
         // Web: download via Blob + anchor click
         const blob = await res.blob();
@@ -244,8 +245,6 @@ export default function Watch() {
           window.URL.revokeObjectURL(url);
           document.body.removeChild(a);
         }, 2000);
-        
-        toast.success(t('watch.subtitle_downloaded'));
       }
     } catch (error) {
       console.error('Subtitle download error:', error);
@@ -255,7 +254,6 @@ export default function Watch() {
         const downloadLink = await VideoStore.getSubtitleDownloadLink(fileId);
         if (downloadLink) {
           window.open(downloadLink, '_blank');
-          toast.info(t('watch.subtitle_open_link'));
         } else {
           toast.error(t('watch.subtitle_download_fail'));
         }
