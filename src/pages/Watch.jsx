@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { ScreenOrientation } from '@capacitor/screen-orientation';
+import { StatusBar } from '@capacitor/status-bar';
 import { useLanguage } from '@/lib/i18n';
 import { getAppSettings } from '@/lib/appSettings';
 
@@ -23,6 +24,7 @@ export default function Watch() {
   const navigate = useNavigate();
   const [activeServer] = useState('primary-server');
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [showSubtitleMenu, setShowSubtitleMenu] = useState(false);
@@ -60,12 +62,96 @@ export default function Watch() {
     }
   };
 
+  const enterFullscreenMode = async () => {
+    if (Capacitor.isNativePlatform()) {
+      try {
+        if (window.AndroidImmersive?.enter) {
+          window.AndroidImmersive.enter();
+        }
+
+        await StatusBar.setOverlaysWebView({ overlay: true });
+        await StatusBar.hide();
+        
+        // Lock ke landscape dengan sensor agar responsif terhadap orientasi device
+        await ScreenOrientation.lock({ orientation: 'sensorLandscape' });
+        setIsFullscreen(true);
+      } catch (err) {
+        console.error('Fullscreen enter error:', err);
+        // Fallback: tetap update state walaupun ada error
+        setIsFullscreen(true);
+      }
+      return;
+    }
+
+    const elem = playerRef.current || document.documentElement;
+    try {
+      if (elem.requestFullscreen) {
+        await elem.requestFullscreen();
+      } else if (elem.webkitRequestFullscreen) {
+        await elem.webkitRequestFullscreen();
+      } else if (elem.msRequestFullscreen) {
+        await elem.msRequestFullscreen();
+      } else if (elem.mozRequestFullScreen) {
+        await elem.mozRequestFullScreen();
+      }
+      setIsFullscreen(true);
+    } catch (err) {
+      console.error('Fullscreen enter error:', err);
+    }
+  };
+
+  const exitFullscreenMode = async () => {
+    if (Capacitor.isNativePlatform()) {
+      try {
+        if (window.AndroidImmersive?.exit) {
+          window.AndroidImmersive.exit();
+        }
+
+        // Unlock dulu sebelum lock ke portrait (penting untuk transisi orientation)
+        await ScreenOrientation.unlock();
+        
+        // Tunggu sebentar agar unlock dapat diproses
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Kemudian lock ke portrait
+        await ScreenOrientation.lock({ orientation: 'portrait' });
+        
+        await StatusBar.show();
+        await StatusBar.setOverlaysWebView({ overlay: false });
+        setIsFullscreen(false);
+      } catch (err) {
+        console.error('Fullscreen exit error:', err);
+        // Fallback: tetap update state walaupun ada error
+        setIsFullscreen(false);
+      }
+      return;
+    }
+
+    try {
+      if (document.exitFullscreen) {
+        await document.exitFullscreen();
+      } else if (document.webkitExitFullscreen) {
+        await document.webkitExitFullscreen();
+      } else if (document.msExitFullscreen) {
+        await document.msExitFullscreen();
+      } else if (document.mozCancelFullScreen) {
+        await document.mozCancelFullScreen();
+      }
+      setIsFullscreen(false);
+    } catch (err) {
+      console.error('Fullscreen exit error:', err);
+    }
+  };
+
   const handleBackFromPlayer = async () => {
-    if (!Capacitor.isNativePlatform() && isInWebFullscreen()) {
+    if (isFullscreen) {
+      await exitFullscreenMode();
+    } else if (!Capacitor.isNativePlatform() && isInWebFullscreen()) {
       await exitWebFullscreen();
     }
     setIsPlaying(false);
   };
+
   const [playerBaseUrl, setPlayerBaseUrl] = useState(() => {
     const saved = localStorage.getItem('streamx_player_url');
     return saved && typeof saved === 'string' && saved.trim()
@@ -73,19 +159,29 @@ export default function Watch() {
       : 'https://vidsrcme.ru/embed/';
   });
 
-  // Cleanup orientation on unmount or stop playing
+  // Cleanup orientation saat berhenti bermain
   useEffect(() => {
-    if (!isPlaying && Capacitor.isNativePlatform()) {
-      ScreenOrientation.unlock().catch(() => {});
+    if (!isPlaying) {
+      if (isFullscreen) {
+        // Jika masih fullscreen saat berhenti, exit dengan proper
+        exitFullscreenMode().catch(err => console.warn('Cleanup exit fullscreen:', err));
+      }
+      
+      if (Capacitor.isNativePlatform()) {
+        // Reset orientation ke portrait normal
+        ScreenOrientation.unlock().catch(err => console.warn('Cleanup unlock orientation:', err));
+      }
     }
   }, [isPlaying]);
 
-  // Handle Android Physical Back Button
+  // Handle Android Physical Back Button & Orientation Changes
   useEffect(() => {
     let backListener;
+    let orientationListener;
     
-    const setupListener = async () => {
+    const setupListeners = async () => {
       if (Capacitor.isNativePlatform()) {
+        // Back button listener
         backListener = await App.addListener('backButton', () => {
           if (showSubtitleMenu) {
             setShowSubtitleMenu(false);
@@ -95,17 +191,33 @@ export default function Watch() {
             navigate(-1);
           }
         });
+
+        // Orientation change listener
+        orientationListener = await ScreenOrientation.addListener('screenOrientationChange', (orientation) => {
+          // Update fullscreen state based on actual device orientation
+          if (isFullscreen) {
+            const isLandscape = orientation.type?.includes('landscape');
+            // Keep fullscreen state in sync with device orientation while in fullscreen
+            if (!isLandscape && isFullscreen) {
+              // Device rotated to portrait while in fullscreen
+              // Let user control when to exit via button
+            }
+          }
+        });
       }
     };
 
-    setupListener();
+    setupListeners();
 
     return () => {
       if (backListener) {
         backListener.remove();
       }
+      if (orientationListener) {
+        orientationListener.remove();
+      }
     };
-  }, [isPlaying, showSubtitleMenu, navigate]);
+  }, [isPlaying, showSubtitleMenu, navigate, isFullscreen]);
 
   useEffect(() => {
     if (!isPlaying && !Capacitor.isNativePlatform() && isInWebFullscreen()) {
@@ -183,7 +295,6 @@ export default function Watch() {
         const filePath = await save({
           defaultPath: fileName,
           filters: [{ name: 'Subtitle', extensions: ['srt'] }],
-          // t('watch.save_subtitle')
         });
         
         if (!filePath) {
@@ -192,8 +303,9 @@ export default function Watch() {
 
         const { writeFile } = await import('@tauri-apps/plugin-fs');
         await writeFile(filePath, uint8);
+        toast.success(`Subtitle berhasil disimpan ke ${filePath}`);
       } else if (Capacitor.isNativePlatform()) {
-        // Android/iOS: simpan file via Capacitor Filesystem lalu Share
+        // Android/iOS: simpan file langsung ke Documents folder
         const arrayBuffer = await res.arrayBuffer();
         const uint8 = new Uint8Array(arrayBuffer);
         
@@ -201,7 +313,7 @@ export default function Watch() {
           throw new Error(t('watch.subtitle_invalid'));
         }
 
-        // Konversi ke base64 (cara yang lebih aman untuk memori)
+        // Konversi ke base64
         let base64Data = '';
         const bytes = new Uint8Array(arrayBuffer);
         for (let i = 0; i < bytes.byteLength; i++) {
@@ -210,21 +322,29 @@ export default function Watch() {
         base64Data = btoa(base64Data);
 
         const { Filesystem, Directory } = await import('@capacitor/filesystem');
-        const { Share } = await import('@capacitor/share');
 
-        // Simpan file ke cache sementara
+        // Cek apakah Documents folder ada, jika tidak buat dulu
+        try {
+          await Filesystem.mkdir({
+            path: 'StreamX_Subtitles',
+            directory: Directory.Documents,
+            recursive: true,
+          });
+        } catch (err) {
+          // Folder mungkin sudah ada, ignore error
+          console.warn('Folder creation warning:', err);
+        }
+
+        // Simpan file langsung ke Documents/StreamX_Subtitles
         const result = await Filesystem.writeFile({
-          path: fileName,
+          path: `StreamX_Subtitles/${fileName}`,
           data: base64Data,
-          directory: Directory.Cache,
+          directory: Directory.Documents,
+          recursive: true,
         });
 
-        // Share file agar user bisa save ke lokasi yang diinginkan
-        await Share.share({
-          title: t('watch.subtitle'),
-          files: [result.uri],
-          dialogTitle: t('watch.save_subtitle'),
-        });
+        // Tampilkan notifikasi sukses dengan path
+        toast.success(`Subtitle tersimpan di Documents/StreamX_Subtitles/${fileName}`);
       } else {
         // Web: download via Blob + anchor click
         const blob = await res.blob();
@@ -245,6 +365,8 @@ export default function Watch() {
           window.URL.revokeObjectURL(url);
           document.body.removeChild(a);
         }, 2000);
+
+        toast.success(`Subtitle berhasil diunduh: ${fileName}`);
       }
     } catch (error) {
       console.error('Subtitle download error:', error);
@@ -506,48 +628,23 @@ export default function Watch() {
       };
 
   const toggleFullscreen = async () => {
-    const isNative = Capacitor.isNativePlatform();
-    
-    if (isNative) {
-      try {
-        const { type } = await ScreenOrientation.orientation();
-        if (type.includes('portrait')) {
-          await ScreenOrientation.lock({ orientation: 'landscape' });
-        } else {
-          await ScreenOrientation.unlock();
-        }
-      } catch (err) {
-        console.error('Screen Orientation Error:', err);
-      }
+    // Jangan biarkan toggle ketika controls terkunci
+    if (isLocked) {
+      console.warn('Fullscreen toggle blocked: controls are locked');
       return;
     }
 
-    const elem = document.documentElement;
-    const isFullscreen = document.fullscreenElement || 
-                        document.webkitFullscreenElement || 
-                        document.mozFullScreenElement || 
-                        document.msFullscreenElement;
-
-    if (!isFullscreen) {
-      if (elem.requestFullscreen) {
-        elem.requestFullscreen().catch(err => console.error(err));
-      } else if (elem.webkitRequestFullscreen) {
-        elem.webkitRequestFullscreen();
-      } else if (elem.msRequestFullscreen) {
-        elem.msRequestFullscreen();
-      } else if (elem.mozRequestFullScreen) {
-        elem.mozRequestFullScreen();
+    try {
+      if (isFullscreen) {
+        // Sedang fullscreen, exit
+        await exitFullscreenMode();
+      } else {
+        // Tidak fullscreen, masuk
+        await enterFullscreenMode();
       }
-    } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen();
-      } else if (document.webkitExitFullscreen) {
-        document.webkitExitFullscreen();
-      } else if (document.msExitFullscreen) {
-        document.msExitFullscreen();
-      } else if (document.mozCancelFullScreen) {
-        document.mozCancelFullScreen();
-      }
+    } catch (err) {
+      console.error('Fullscreen toggle error:', err);
+      toast.error('Gagal mengubah mode fullscreen');
     }
   };
 
@@ -558,6 +655,7 @@ export default function Watch() {
       {isPlaying && (
         isWebPlayer ? (
           <div
+            ref={playerRef}
             className="fixed inset-0 z-[100] bg-black overflow-hidden"
           >
             {vidsrcUrl ? (
@@ -596,6 +694,7 @@ export default function Watch() {
           </div>
         ) : (
           <div 
+            ref={playerRef}
             className={`fixed inset-0 z-[100] bg-black overflow-hidden transition-all duration-300 ${!showControls ? 'cursor-none' : ''}`}
             onMouseMove={resetControlsTimeout}
             onTouchStart={handleTouchStart}
@@ -637,9 +736,23 @@ export default function Watch() {
               
               <div className={`absolute top-0 left-0 right-0 p-4 flex items-center justify-between z-50 transition-opacity duration-500 ${showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
                 <button
-                  onClick={handleBackFromPlayer}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (!isLocked) {
+                      handleBackFromPlayer();
+                    }
+                  }}
+                  onTouchEnd={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (!isLocked) {
+                      handleBackFromPlayer();
+                    }
+                  }}
+                  type="button"
                   disabled={isLocked}
-                  className={`w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 flex items-center justify-center transition-colors border border-white/10 backdrop-blur-md pointer-events-auto ${isLocked ? 'opacity-0' : 'opacity-100'}`}
+                  className={`w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 flex items-center justify-center transition-colors border border-white/10 backdrop-blur-md pointer-events-auto relative z-50 ${isLocked ? 'opacity-0' : 'opacity-100'}`}
                 >
                   <ArrowLeft className="w-5 h-5 text-white" />
                 </button>
@@ -648,28 +761,58 @@ export default function Watch() {
                   {Capacitor.isNativePlatform() && (
                     <button
                       onClick={(e) => {
+                        e.preventDefault();
                         e.stopPropagation();
                         const newLockState = !isLocked;
                         setIsLocked(newLockState);
                         if (newLockState) {
-                          setShowControls(false); // Langsung sembunyikan kontrol saat di-lock
+                          setShowControls(false);
                           if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
                         } else {
                           resetControlsTimeout();
                         }
                       }}
-                      className="bg-black/60 hover:bg-black/80 text-white border border-white/10 backdrop-blur-md h-10 w-10 rounded-lg flex items-center justify-center transition-all"
-                      title={isLocked ? "Unlock Controls" : "Lock Controls"}
+                      onTouchEnd={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const newLockState = !isLocked;
+                        setIsLocked(newLockState);
+                        if (newLockState) {
+                          setShowControls(false);
+                          if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+                        } else {
+                          resetControlsTimeout();
+                        }
+                      }}
+                      type="button"
+                      className="bg-black/60 hover:bg-black/80 text-white border border-white/10 backdrop-blur-md h-10 w-10 rounded-lg flex items-center justify-center transition-all pointer-events-auto"
+                      title={isLocked ? "Buka Kontrol" : "Kunci Kontrol"}
                     >
                       {isLocked ? <Lock className="w-4 h-4 text-white" /> : <Unlock className="w-4 h-4" />}
                     </button>
                   )}
                   
                   <button
-                    onClick={toggleFullscreen}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      // Ensure button click is processed immediately
+                      if (!isLocked) {
+                        toggleFullscreen().catch(err => console.error('Toggle fullscreen failed:', err));
+                      }
+                    }}
+                    onTouchEnd={(e) => {
+                      // Handle touch end untuk better mobile responsiveness
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (!isLocked) {
+                        toggleFullscreen().catch(err => console.error('Toggle fullscreen failed:', err));
+                      }
+                    }}
+                    type="button"
                     disabled={isLocked}
-                    className={`bg-black/60 hover:bg-black/80 text-white border border-white/10 backdrop-blur-md h-10 w-10 rounded-lg flex items-center justify-center transition-all ${isLocked ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
-                    title={t('watch.fullscreen')}
+                    className={`bg-black/60 hover:bg-black/80 text-white border border-white/10 backdrop-blur-md h-10 w-10 rounded-lg flex items-center justify-center transition-all pointer-events-auto relative z-50 ${isLocked ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+                    title="Fullscreen"
                   >
                     <Maximize className="w-4 h-4" />
                   </button>

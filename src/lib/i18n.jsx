@@ -80,6 +80,7 @@ const translations = {
 
     // Home
     'home.search_placeholder': 'Cari film atau genre...',
+    'home.searching': 'Mencari...',
     'home.search_results': 'Menampilkan {count} hasil untuk "{query}"',
     'home.popular': 'Paling Populer',
     'home.today_pick': 'Pilihan Hari Ini',
@@ -214,6 +215,7 @@ const translations = {
 
     // Home
     'home.search_placeholder': 'Search movies or genres...',
+    'home.searching': 'Searching...',
     'home.search_results': 'Showing {count} results for "{query}"',
     'home.popular': 'Most Popular',
     'home.today_pick': "Today's Picks",

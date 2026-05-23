@@ -121,6 +121,51 @@ export const VideoStore = {
     return data;
   },
 
+  async search(keyword, sort = '-view_count') {
+    const q = String(keyword || '').trim();
+    if (!q) return [];
+
+    const pageSize = 1000;
+    let from = 0;
+    let allData = [];
+
+    while (true) {
+      const escaped = q.replace(/[%_]/g, '\\$&').replace(/[(),]/g, ' ');
+      const pattern = `%${escaped}%`;
+      const searchColumns = [
+        `title.ilike.${pattern}`,
+        `description.ilike.${pattern}`,
+        `genre.ilike.${pattern}`,
+        `category.ilike.${pattern}`,
+      ];
+      if (/^\d+$/.test(q)) {
+        searchColumns.push(`year.eq.${q}`);
+      }
+      const desc = sort.startsWith('-');
+      const column = sort.replace('-', '');
+      const finalColumn = column === 'created_date' ? 'created_at' : column;
+
+      const { data, error } = await supabase
+        .from('videos')
+        .select('*')
+        .or(searchColumns.join(','))
+        .order(finalColumn, { ascending: !desc })
+        .range(from, from + pageSize - 1);
+
+      if (error) {
+        console.error('Error searching videos:', error);
+        return allData;
+      }
+
+      allData = allData.concat(data || []);
+
+      if (!data || data.length < pageSize) break;
+      from += pageSize;
+    }
+
+    return allData;
+  },
+
   async filter(filters, sort = '-created_at', limit = 200) {
     let query = supabase.from('videos').select('*');
     

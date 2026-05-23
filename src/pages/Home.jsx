@@ -32,11 +32,28 @@ function LoadingSkeleton() {
 
 export default function Home() {
   const [homeSearchQuery, setHomeSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const queryClient = useQueryClient();
   const { data: videos = [], isLoading } = useQuery({
     queryKey: ['videos'],
     queryFn: () => VideoStore.list('-created_date', 100),
     refetchOnWindowFocus: true,
+  });
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(homeSearchQuery);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [homeSearchQuery]);
+
+  const normalizedSearchQuery = debouncedSearchQuery.trim().toLowerCase();
+  const isSearching = normalizedSearchQuery.length > 0;
+  const { data: databaseSearchVideos = [], isFetching: isSearchingVideos } = useQuery({
+    queryKey: ['videos-home-search', normalizedSearchQuery],
+    queryFn: () => VideoStore.search(normalizedSearchQuery),
+    enabled: isSearching,
   });
 
   useEffect(() => {
@@ -71,15 +88,11 @@ export default function Home() {
     return shuffled;
   };
 
-  const filteredVideos = videos.filter(v => 
-    v.title?.toLowerCase().includes(homeSearchQuery.toLowerCase()) ||
-    v.description?.toLowerCase().includes(homeSearchQuery.toLowerCase()) ||
-    v.genre?.toLowerCase().includes(homeSearchQuery.toLowerCase())
-  );
+  const searchResultVideos = isSearching ? databaseSearchVideos : videos;
 
-  const recentVideos = todayPicks.length > 0 ? todayPicks : shuffleArray([...filteredVideos]).slice(0, 21);
-  const popularVideos = [...filteredVideos].sort((a, b) => (b.view_count || 0) - (a.view_count || 0));
-  const newlyAddedVideos = [...filteredVideos].sort((a, b) => Number(new Date(b.created_date)) - Number(new Date(a.created_date)));
+  const recentVideos = todayPicks.length > 0 ? todayPicks : shuffleArray([...videos]).slice(0, 21);
+  const popularVideos = [...searchResultVideos].sort((a, b) => (b.view_count || 0) - (a.view_count || 0));
+  const newlyAddedVideos = [...videos].sort((a, b) => Number(new Date(b.created_date)) - Number(new Date(a.created_date)));
 
   if (videos.length === 0) {
     return (
@@ -139,7 +152,9 @@ export default function Home() {
           </div>
           {homeSearchQuery && (
             <p className="text-sm text-muted-foreground mt-2 animate-in fade-in slide-in-from-top-1 px-1">
-              {t('home.search_results', { count: filteredVideos.length, query: homeSearchQuery })}
+              {isSearchingVideos
+                ? t('home.searching')
+                : t('home.search_results', { count: searchResultVideos.length, query: homeSearchQuery })}
             </p>
           )}
         </div>
@@ -160,7 +175,7 @@ export default function Home() {
           <VideoRow title={t('home.my_favorites')} videos={favoriteVideos} icon={Star} isSlider={true} />
         )}
 
-        {filteredVideos.length === 0 && videos.length > 0 && (
+        {isSearching && searchResultVideos.length === 0 && videos.length > 0 && (
           <div className="text-center py-20">
             <Search className="w-16 h-16 text-muted-foreground mx-auto mb-4 opacity-20" />
             <h3 className="text-xl font-bold text-foreground mb-2">{t('home.no_results')}</h3>
