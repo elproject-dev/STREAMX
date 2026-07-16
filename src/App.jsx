@@ -22,11 +22,10 @@ import Profile from '@/pages/Profile';
 import FavoritesPage from '@/pages/Favorites';
 import WatchHistoryPage from '@/pages/WatchHistoryPage';
 
-const AuthenticatedApp = () => {
-  const { isAuthenticated, isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
-
-  // Show loading spinner while checking app public settings or auth
-  if (isLoadingPublicSettings || isLoadingAuth) {
+const ProtectedRoute = ({ children }) => {
+  const { isAuthenticated, isLoadingAuth } = useAuth();
+  
+  if (isLoadingAuth) {
     return (
       <div className="fixed inset-0 flex items-center justify-center">
         <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
@@ -34,40 +33,43 @@ const AuthenticatedApp = () => {
     );
   }
 
-  // Handle authentication errors
-  if (authError) {
-    if (authError.type === 'user_not_registered') {
-      return <UserNotRegisteredError />;
-    } else if (authError.type === 'auth_required') {
-      navigateToLogin();
-      return null;
-    }
+  if (!isAuthenticated) {
+    window.location.href = '/login';
+    return null;
   }
 
-  // Not authenticated — show login page or redirect
-  if (!isAuthenticated) {
+  return children;
+};
+
+const AppRoutes = () => {
+  const { isLoadingPublicSettings, isLoadingAuth } = useAuth();
+
+  // Show loading spinner while checking app public settings
+  if (isLoadingPublicSettings || isLoadingAuth) {
     return (
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="*" element={<Login />} />
-      </Routes>
+      <div className="fixed inset-0 flex items-center justify-center bg-background">
+        <div className="w-8 h-8 border-4 border-slate-200 border-t-primary rounded-full animate-spin"></div>
+      </div>
     );
   }
 
-  // Authenticated — render the main app
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route element={<AppLayout />}>
+        {/* Public Routes */}
         <Route path="/" element={<Home />} />
         <Route path="/watch/:id" element={<Watch />} />
         <Route path="/search" element={<Search />} />
         <Route path="/browse/:category" element={<Browse />} />
-        <Route path="/manage" element={<Manage />} />
-        <Route path="/install" element={<Install />} />
-        <Route path="/profile" element={<Profile />} />
-        <Route path="/favorites" element={<FavoritesPage />} />
-        <Route path="/history" element={<WatchHistoryPage />} />
+        
+        {/* Protected Routes */}
+        <Route path="/manage" element={<ProtectedRoute><Manage /></ProtectedRoute>} />
+        <Route path="/install" element={<ProtectedRoute><Install /></ProtectedRoute>} />
+        <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+        <Route path="/favorites" element={<ProtectedRoute><FavoritesPage /></ProtectedRoute>} />
+        <Route path="/history" element={<ProtectedRoute><WatchHistoryPage /></ProtectedRoute>} />
+        
         <Route path="*" element={<PageNotFound />} />
       </Route>
     </Routes>
@@ -89,12 +91,13 @@ function App() {
           <WatchHistoryProvider>
             <QueryClientProvider client={queryClientInstance}>
               <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-                <AuthenticatedApp />
+                <AppRoutes />
               </Router>
               <SonnerToaster 
                 position="top-center"
                 expand={false}
                 richColors={false}
+                style={{ marginTop: 'env(safe-area-inset-top)' }}
                 toastOptions={{
                   duration: 3000,
                   style: {

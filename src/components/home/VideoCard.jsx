@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { useFavorites } from '@/lib/FavoritesContext';
 
-export default function VideoCard({ video, index = 0 }) {
+export default function VideoCard({ video, index = 0, priority = false }) {
   const [isHovered, setIsHovered] = useState(false);
   const { isFavorite, toggle } = useFavorites();
   const isFav = isFavorite(video.id);
@@ -19,9 +19,9 @@ export default function VideoCard({ video, index = 0 }) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={priority ? false : { opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay: index * 0.05 }}
+      transition={priority ? { duration: 0 } : { duration: 0.4, delay: index * 0.05 }}
     >
       <Link to={`/watch/${video.id}`}>
         <div
@@ -34,6 +34,9 @@ export default function VideoCard({ video, index = 0 }) {
             <img
               src={poster}
               alt={video.title}
+              loading={priority ? "eager" : "lazy"}
+              fetchpriority={priority ? "high" : "auto"}
+              decoding={priority ? "sync" : "async"}
               className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
             />
             {/* Hover Overlay */}

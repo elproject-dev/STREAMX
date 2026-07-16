@@ -8,8 +8,10 @@
     "build": "vite build",
     "lint": "eslint . --quiet",
     "lint:fix": "eslint . --fix",
-    "typecheck": "tsc -p ./jsconfig.json",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "version": "node scripts/bump-version.js",
+    "release:android": "node scripts/release.js",
+    "release:desktop": "node scripts/release-desktop.js"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.1",
@@ -20,6 +22,7 @@
     "@capacitor/filesystem": "^8.1.2",
     "@capacitor/screen-orientation": "^8.0.1",
     "@capacitor/share": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.3",
     "@hello-pangea/dnd": "^17.0.0",
     "@hookform/resolvers": "^4.1.2",
     "@radix-ui/react-accordion": "^1.2.3",
@@ -78,6 +81,7 @@
     "react-dom": "^18.2.0",
     "react-hook-form": "^7.54.2",
     "react-hot-toast": "^2.6.0",
+    "react-intersection-observer": "^10.1.0",
     "react-leaflet": "^4.2.1",
     "react-markdown": "^9.0.1",
     "react-resizable-panels": "^2.1.7",
@@ -101,6 +105,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
     "baseline-browser-mapping": "^2.8.32",
+    "dotenv": "^17.4.2",
     "eslint": "^9.19.0",
     "eslint-plugin-react": "^7.37.4",
     "eslint-plugin-react-hooks": "^5.0.0",

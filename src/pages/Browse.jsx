@@ -1,10 +1,12 @@
 import React from 'react';
 import { VideoStore } from '@/lib/videoStore';
-import { useQuery } from '@tanstack/react-query';
-import { useParams } from 'react-router-dom';
-import { Film, Tv, BookOpen, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 import VideoCard from '@/components/home/VideoCard';
+import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInView } from 'react-intersection-observer';
+import { useEffect } from 'react';
+import { useParams } from 'react-router-dom';
+import { Film, Tv, BookOpen, Sparkles } from 'lucide-react';
 
 const categoryMeta = {
   film: { label: 'Film', icon: Film, description: 'Koleksi film dari berbagai genre' },
@@ -17,13 +19,37 @@ const categoryMeta = {
 
 export default function Browse() {
   const { category } = useParams();
+  const { ref, inView } = useInView();
+  const limit = typeof window !== 'undefined' && window.innerWidth >= 1536 ? 28 : 24;
 
-  const { data: videos = [], isLoading } = useQuery({
+  const {
+    data,
+    isLoading,
+    isFetchingNextPage,
+    fetchNextPage,
+    hasNextPage,
+  } = useInfiniteQuery({
     queryKey: ['videos-browse', category],
-    queryFn: () => category
-      ? VideoStore.filter({ category }, '-created_date', 100)
-      : VideoStore.list('-created_date', 100),
+    queryFn: ({ pageParam = 0 }) => category
+      ? VideoStore.filter({ category }, '-created_date', limit, pageParam)
+      : VideoStore.list('-created_date', limit, pageParam),
+    getNextPageParam: (lastPage, allPages) => {
+      return lastPage.length === limit ? allPages.length : undefined;
+    },
+    initialPageParam: 0,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
   });
+
+  useEffect(() => {
+    if (inView && hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [inView, hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  const videos = data?.pages.flat() || [];
 
   const meta = categoryMeta[category] || { label: 'Semua Video', icon: Film, description: 'Jelajahi semua video' };
   const Icon = meta.icon;
@@ -46,7 +72,7 @@ export default function Browse() {
 
         {/* Grid */}
         {isLoading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6">
+          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-7 gap-4 md:gap-6">
             {[...Array(10)].map((_, i) => (
               <div key={i} className="animate-pulse">
                 <div className="aspect-video bg-secondary rounded-lg" />
@@ -55,7 +81,7 @@ export default function Browse() {
             ))}
           </div>
         ) : videos.length > 0 ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6">
+          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-7 gap-4 md:gap-6">
             {videos.map((video, index) => (
               <div key={video.id} className="w-full">
                 <VideoCard video={video} index={index} />
@@ -71,6 +97,16 @@ export default function Browse() {
             </p>
           </div>
         )}
+
+        {/* Loading Spinner for Next Page */}
+        {isFetchingNextPage && (
+          <div className="flex justify-center mt-8 mb-4">
+            <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+          </div>
+        )}
+        
+        {/* Invisible trigger element */}
+        <div ref={ref} className="h-10 w-full" />
       </div>
     </div>
   );

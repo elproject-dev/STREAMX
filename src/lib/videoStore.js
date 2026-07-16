@@ -103,7 +103,7 @@ export async function fetchTmdbData(tmdbId, contentType) {
 }
 
 export const VideoStore = {
-  async list(sort = '-created_at', limit = 200) {
+  async list(sort = '-created_at', limit = 21, pageParam = 0) {
     let query = supabase.from('videos').select('*');
     
     const desc = sort.startsWith('-');
@@ -111,7 +111,11 @@ export const VideoStore = {
     const finalColumn = column === 'created_date' ? 'created_at' : column;
     query = query.order(finalColumn, { ascending: !desc });
     
-    if (limit) query = query.limit(limit);
+    if (limit) {
+      const from = pageParam * limit;
+      const to = from + limit - 1;
+      query = query.range(from, to);
+    }
     
     const { data, error } = await query;
     if (error) {
@@ -121,52 +125,48 @@ export const VideoStore = {
     return data;
   },
 
-  async search(keyword, sort = '-view_count') {
+  async search(keyword, sort = '-view_count', limit = 21, pageParam = 0) {
     const q = String(keyword || '').trim();
     if (!q) return [];
 
-    const pageSize = 1000;
-    let from = 0;
-    let allData = [];
+    const escaped = q.replace(/[%_]/g, '\\$&').replace(/[(),]/g, ' ');
+    const pattern = `%${escaped}%`;
+    const searchColumns = [
+      `title.ilike.${pattern}`,
+      `description.ilike.${pattern}`,
+      `genre.ilike.${pattern}`,
+      `category.ilike.${pattern}`,
+    ];
+    if (/^\d+$/.test(q)) {
+      searchColumns.push(`year.eq.${q}`);
+    }
+    const desc = sort.startsWith('-');
+    const column = sort.replace('-', '');
+    const finalColumn = column === 'created_date' ? 'created_at' : column;
 
-    while (true) {
-      const escaped = q.replace(/[%_]/g, '\\$&').replace(/[(),]/g, ' ');
-      const pattern = `%${escaped}%`;
-      const searchColumns = [
-        `title.ilike.${pattern}`,
-        `description.ilike.${pattern}`,
-        `genre.ilike.${pattern}`,
-        `category.ilike.${pattern}`,
-      ];
-      if (/^\d+$/.test(q)) {
-        searchColumns.push(`year.eq.${q}`);
-      }
-      const desc = sort.startsWith('-');
-      const column = sort.replace('-', '');
-      const finalColumn = column === 'created_date' ? 'created_at' : column;
+    let query = supabase
+      .from('videos')
+      .select('*')
+      .or(searchColumns.join(','))
+      .order(finalColumn, { ascending: !desc });
 
-      const { data, error } = await supabase
-        .from('videos')
-        .select('*')
-        .or(searchColumns.join(','))
-        .order(finalColumn, { ascending: !desc })
-        .range(from, from + pageSize - 1);
-
-      if (error) {
-        console.error('Error searching videos:', error);
-        return allData;
-      }
-
-      allData = allData.concat(data || []);
-
-      if (!data || data.length < pageSize) break;
-      from += pageSize;
+    if (limit) {
+      const from = pageParam * limit;
+      const to = from + limit - 1;
+      query = query.range(from, to);
     }
 
-    return allData;
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Error searching videos:', error);
+      return [];
+    }
+
+    return data || [];
   },
 
-  async filter(filters, sort = '-created_at', limit = 200) {
+  async filter(filters, sort = '-created_at', limit = 21, pageParam = 0) {
     let query = supabase.from('videos').select('*');
     
     if (filters) {
@@ -180,7 +180,11 @@ export const VideoStore = {
     const finalColumn = column === 'created_date' ? 'created_at' : column;
     query = query.order(finalColumn, { ascending: !desc });
     
-    if (limit) query = query.limit(limit);
+    if (limit) {
+      const from = pageParam * limit;
+      const to = from + limit - 1;
+      query = query.range(from, to);
+    }
     
     const { data, error } = await query;
     if (error) {

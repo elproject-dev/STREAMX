@@ -1,31 +1,43 @@
 import React from 'react';
 import { VideoStore } from '@/lib/videoStore';
-import { useQuery } from '@tanstack/react-query';
-import { Search as SearchIcon, Film } from 'lucide-react';
 import { motion } from 'framer-motion';
 import VideoCard from '@/components/home/VideoCard';
+import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInView } from 'react-intersection-observer';
+import { useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { Search as SearchIcon, Film } from 'lucide-react';
 
 export default function Search() {
   const [searchParams] = useSearchParams();
   const query = searchParams.get('q') || '';
+  const { ref, inView } = useInView();
+  const limit = typeof window !== 'undefined' && window.innerWidth >= 1536 ? 28 : 24;
 
-  const { data: allVideos = [], isLoading } = useQuery({
-    queryKey: ['videos-search'],
-    queryFn: () => VideoStore.list('-created_date', 200),
+  const {
+    data,
+    isLoading,
+    isFetchingNextPage,
+    fetchNextPage,
+    hasNextPage,
+  } = useInfiniteQuery({
+    queryKey: ['videos-search', query],
+    queryFn: ({ pageParam = 0 }) => query
+      ? VideoStore.search(query, '-view_count', limit, pageParam)
+      : VideoStore.list('-created_date', limit, pageParam),
+    getNextPageParam: (lastPage, allPages) => {
+      return lastPage.length === limit ? allPages.length : undefined;
+    },
+    initialPageParam: 0,
   });
 
-  const filteredVideos = query
-    ? allVideos.filter(v => {
-        const q = query.toLowerCase();
-        return (
-          v.title?.toLowerCase().includes(q) ||
-          v.description?.toLowerCase().includes(q) ||
-          v.genre?.toLowerCase().includes(q) ||
-          v.category?.toLowerCase().includes(q)
-        );
-      })
-    : allVideos;
+  useEffect(() => {
+    if (inView && hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [inView, hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  const filteredVideos = data?.pages.flat() || [];
 
   return (
     <div className="min-h-screen bg-background pt-24 md:pt-28 pb-16">
@@ -49,7 +61,7 @@ export default function Search() {
 
         {/* Results Grid */}
         {isLoading ? (
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8 2xl:grid-cols-10 gap-4 md:gap-6">
+          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-7 gap-4 md:gap-6">
             {[...Array(10)].map((_, i) => (
               <div key={i} className="animate-pulse">
                 <div className="aspect-[2/3] bg-secondary rounded-lg" />
@@ -59,7 +71,7 @@ export default function Search() {
             ))}
           </div>
         ) : filteredVideos.length > 0 ? (
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8 2xl:grid-cols-10 gap-4 md:gap-6">
+          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-7 gap-4 md:gap-6">
             {filteredVideos.map((video, index) => (
               <div key={video.id} className="w-full">
                 <VideoCard video={video} index={index} />
@@ -75,6 +87,16 @@ export default function Search() {
             </p>
           </div>
         )}
+
+        {/* Loading Spinner for Next Page */}
+        {isFetchingNextPage && (
+          <div className="flex justify-center mt-8 mb-4">
+            <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+          </div>
+        )}
+        
+        {/* Invisible trigger element */}
+        <div ref={ref} className="h-10 w-full" />
       </div>
     </div>
   );

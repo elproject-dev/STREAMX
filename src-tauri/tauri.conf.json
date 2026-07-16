@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "StreamX",
-  "version": "0.1.0",
+  "version": "1.0.8",
   "identifier": "com.streamx.app",
   "build": {
     "frontendDist": "../dist",

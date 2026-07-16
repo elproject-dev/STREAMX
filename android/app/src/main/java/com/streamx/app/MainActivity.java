@@ -12,6 +12,9 @@ import android.webkit.JsPromptResult;
 import android.webkit.ConsoleMessage;
 import android.net.Uri;
 import android.view.View;
+import android.os.Build;
+import android.view.Display;
+import android.view.WindowManager;
 
 import com.getcapacitor.BridgeActivity;
 
@@ -19,7 +22,26 @@ public class MainActivity extends BridgeActivity {
 
   @Override
   public void onCreate(Bundle savedInstanceState) {
+    registerPlugin(ApkInstallerPlugin.class);
     super.onCreate(savedInstanceState);
+
+    // Enable high refresh rate (e.g., 120Hz) if available
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      Display.Mode[] modes = getWindowManager().getDefaultDisplay().getSupportedModes();
+      if (modes != null && modes.length > 0) {
+        Display.Mode maxMode = modes[0];
+        for (Display.Mode mode : modes) {
+          if (mode.getPhysicalHeight() == maxMode.getPhysicalHeight()
+              && mode.getPhysicalWidth() == maxMode.getPhysicalWidth()
+              && mode.getRefreshRate() > maxMode.getRefreshRate()) {
+            maxMode = mode;
+          }
+        }
+        WindowManager.LayoutParams layoutParams = getWindow().getAttributes();
+        layoutParams.preferredDisplayModeId = maxMode.getModeId();
+        getWindow().setAttributes(layoutParams);
+      }
+    }
 
     WebView webView = getBridge().getWebView();
     WebSettings settings = webView.getSettings();
@@ -119,7 +141,19 @@ public class MainActivity extends BridgeActivity {
       @JavascriptInterface
       public void exit() {
         runOnUiThread(() -> {
-          getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+          getWindow().getDecorView().setSystemUiVisibility(
+            View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
+            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
+            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+          );
+          // Jangan paksa rotasi ke UNSPECIFIED di sini agar tidak otomatis balik ke portrait
+          // saat pengguna keluar dari fullscreen (terutama jika auto-rotate mereka mati).
+        });
+      }
+
+      @JavascriptInterface
+      public void resetOrientation() {
+        runOnUiThread(() -> {
           setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
         });
       }

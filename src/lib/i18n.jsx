@@ -92,6 +92,7 @@ const translations = {
     'home.no_results': 'Tidak ada hasil',
     'home.no_results_desc': 'Tidak dapat menemukan video yang cocok dengan "{query}"',
     'home.clear_search': 'Hapus Pencarian',
+    'home.press_back_again': 'Tekan sekali lagi untuk keluar',
 
     // Login
     'login.title': 'Masuk ke STREAMX',
@@ -99,11 +100,11 @@ const translations = {
     'login.email': 'Email',
     'login.password': 'Password',
     'login.fullname': 'Nama Lengkap',
-    'login.button': 'Masuk',
+    'login.button': 'Login',
     'login.signup_button': 'Daftar',
     'login.no_account': 'Belum punya akun?',
     'login.has_account': 'Sudah punya akun?',
-    'login.login_subtitle': 'Masuk ke akun Anda',
+    'login.login_subtitle': 'Login ke akun Anda',
     'login.signup_subtitle': 'Buat akun baru',
     'login.email_placeholder': 'Masukkan Email',
     'login.password_placeholder': 'Masukkan Password',
@@ -120,6 +121,8 @@ const translations = {
     'login.login_link': 'Masuk',
     'login.confirm_email': 'Cek email Anda untuk konfirmasi pendaftaran.',
     'login.welcome': 'Selamat datang!',
+    'login.login_required': 'Untuk pengalaman menonton film lebih baik lagi',
+    'login.login_desc': 'Harap login atau buat akun terlebih dahulu',
 
     // Home
     // Manage
@@ -227,6 +230,7 @@ const translations = {
     'home.no_results': 'No results',
     'home.no_results_desc': 'Could not find any videos matching "{query}"',
     'home.clear_search': 'Clear Search',
+    'home.press_back_again': 'Press back once again to exit',
 
     // Login
     'login.title': 'Sign in to STREAMX',
@@ -234,7 +238,7 @@ const translations = {
     'login.email': 'Email',
     'login.password': 'Password',
     'login.fullname': 'Full Name',
-    'login.button': 'Sign In',
+    'login.button': 'Login',
     'login.signup_button': 'Sign Up',
     'login.no_account': "Don't have an account?",
     'login.has_account': 'Already have an account?',
@@ -252,9 +256,11 @@ const translations = {
     'login.error_signup': 'Registration failed',
     'login.success_signup': 'Registration successful! Please check your email to confirm.',
     'login.signup_link': 'Sign up now',
-    'login.login_link': 'Sign in',
+    'login.login_link': 'Login',
     'login.confirm_email': 'Check your email to confirm registration.',
     'login.welcome': 'Welcome!',
+    'login.login_required': 'For a better streaming experience',
+    'login.login_desc': 'Please Login/Create an account first',
 
     // Home
     // Manage
@@ -279,7 +285,7 @@ const LanguageContext = createContext();
 
 export function LanguageProvider({ children }) {
   const [language, setLanguage] = useState(() => {
-    return localStorage.getItem(STORAGE_KEY) || 'en';
+    return localStorage.getItem(STORAGE_KEY) || 'id';
   });
 
   useEffect(() => {

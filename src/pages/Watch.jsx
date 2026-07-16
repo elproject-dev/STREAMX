@@ -2,10 +2,11 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { VideoStore } from '@/lib/videoStore';
 import { useWatchHistory } from '@/lib/WatchHistoryContext';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { ArrowLeft, Film, AlertCircle, Play, Maximize, Languages, Download, Loader2, X, Lock, Unlock } from 'lucide-react';
+import { ArrowLeft, Film, AlertCircle, Play, Maximize, Languages, Download, Loader2, X, Lock, Unlock, LogIn } from 'lucide-react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import VideoRow from '@/components/home/VideoRow';
+import { useAuth } from '@/lib/AuthContext';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -22,6 +23,7 @@ import { getAppSettings } from '@/lib/appSettings';
 export default function Watch() {
   const { id: videoId } = useParams();
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
   const [activeServer] = useState('primary-server');
   const [isPlaying, setIsPlaying] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -71,9 +73,9 @@ export default function Watch() {
 
         await StatusBar.setOverlaysWebView({ overlay: true });
         await StatusBar.hide();
-        
-        // Lock ke landscape dengan sensor agar responsif terhadap orientasi device
-        await ScreenOrientation.lock({ orientation: 'sensorLandscape' });
+
+        // Lock paksa ke landscape saat masuk fullscreen
+        await ScreenOrientation.lock({ orientation: 'landscape' });
         setIsFullscreen(true);
       } catch (err) {
         console.error('Fullscreen enter error:', err);
@@ -107,17 +109,13 @@ export default function Watch() {
           window.AndroidImmersive.exit();
         }
 
-        // Unlock dulu sebelum lock ke portrait (penting untuk transisi orientation)
-        await ScreenOrientation.unlock();
-        
-        // Tunggu sebentar agar unlock dapat diproses
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        // Kemudian lock ke portrait
+        // Lock paksa kembali ke portrait saat keluar fullscreen
         await ScreenOrientation.lock({ orientation: 'portrait' });
-        
+
         await StatusBar.show();
+        // Pancing Capacitor plugin agar menyadari perubahan dengan toggle cepat
         await StatusBar.setOverlaysWebView({ overlay: false });
+        await StatusBar.setOverlaysWebView({ overlay: true });
         setIsFullscreen(false);
       } catch (err) {
         console.error('Fullscreen exit error:', err);
@@ -166,9 +164,12 @@ export default function Watch() {
         // Jika masih fullscreen saat berhenti, exit dengan proper
         exitFullscreenMode().catch(err => console.warn('Cleanup exit fullscreen:', err));
       }
-      
+
       if (Capacitor.isNativePlatform()) {
-        // Reset orientation ke portrait normal
+        if (window.AndroidImmersive?.resetOrientation) {
+          window.AndroidImmersive.resetOrientation();
+        }
+        // Reset orientation ke normal (portrait jika auto-rotate mati)
         ScreenOrientation.unlock().catch(err => console.warn('Cleanup unlock orientation:', err));
       }
     }
@@ -178,7 +179,7 @@ export default function Watch() {
   useEffect(() => {
     let backListener;
     let orientationListener;
-    
+
     const setupListeners = async () => {
       if (Capacitor.isNativePlatform()) {
         // Back button listener
@@ -230,12 +231,12 @@ export default function Watch() {
       toast.error(t('watch.tmdb_not_found'));
       return;
     }
-    
+
     setIsSearchingSubs(true);
     setShowSubtitleMenu(true);
     try {
       const results = await VideoStore.searchSubtitles(
-        video.tmdb_id, 
+        video.tmdb_id,
         video.content_type,
         video.season,
         video.episode
@@ -286,7 +287,7 @@ export default function Watch() {
         // Tauri Desktop: tampilkan Save dialog lalu tulis file
         const arrayBuffer = await res.arrayBuffer();
         const uint8 = new Uint8Array(arrayBuffer);
-        
+
         if (uint8.length < 500) {
           throw new Error(t('watch.subtitle_invalid'));
         }
@@ -296,7 +297,7 @@ export default function Watch() {
           defaultPath: fileName,
           filters: [{ name: 'Subtitle', extensions: ['srt'] }],
         });
-        
+
         if (!filePath) {
           return;
         }
@@ -308,7 +309,7 @@ export default function Watch() {
         // Android/iOS: simpan file langsung ke Documents folder
         const arrayBuffer = await res.arrayBuffer();
         const uint8 = new Uint8Array(arrayBuffer);
-        
+
         if (uint8.length < 500) {
           throw new Error(t('watch.subtitle_invalid'));
         }
@@ -348,7 +349,7 @@ export default function Watch() {
       } else {
         // Web: download via Blob + anchor click
         const blob = await res.blob();
-        
+
         if (blob.size < 500) {
           throw new Error(t('watch.subtitle_invalid'));
         }
@@ -360,7 +361,7 @@ export default function Watch() {
         a.download = fileName;
         document.body.appendChild(a);
         a.click();
-        
+
         setTimeout(() => {
           window.URL.revokeObjectURL(url);
           document.body.removeChild(a);
@@ -370,7 +371,7 @@ export default function Watch() {
       }
     } catch (error) {
       console.error('Subtitle download error:', error);
-      
+
       // Fallback: Jika Edge Function gagal, coba cara manual
       try {
         const downloadLink = await VideoStore.getSubtitleDownloadLink(fileId);
@@ -412,7 +413,7 @@ export default function Watch() {
     if (controlsTimeoutRef.current) {
       clearTimeout(controlsTimeoutRef.current);
     }
-    
+
     // Gunakan durasi custom jika ada, default 15 detik (DINONAKTIFKAN untuk kenyamanan target media player)
     // const timeoutDuration = 15000;
 
@@ -465,9 +466,9 @@ export default function Watch() {
 
   const servers = useMemo(() => {
     return [
-      { 
-        id: 'primary-server', 
-        label: 'Server Utama', 
+      {
+        id: 'primary-server',
+        label: 'Server Utama',
         url: video => {
           const isTv = video.content_type === 'tv';
           const tmdbId = video.tmdb_id;
@@ -476,25 +477,25 @@ export default function Watch() {
 
           // Deteksi otomatis format berdasarkan domain untuk akurasi lebih tinggi
           if (baseUrl.includes('vidsrcme.ru')) {
-            return isTv 
+            return isTv
               ? `${baseUrl}tv?tmdb=${tmdbId}&season=${s}&episode=${e}`
               : `${baseUrl}movie?tmdb=${tmdbId}`;
-          } 
-          
+          }
+
           if (baseUrl.includes('vidsrc.xyz')) {
-            return isTv 
+            return isTv
               ? `${baseUrl}tv/${tmdbId}/${s}/${e}`
               : `${baseUrl}movie/${tmdbId}`;
           }
 
           if (baseUrl.includes('vidsrc.to') || baseUrl.includes('vidsrc.me')) {
-            return isTv 
+            return isTv
               ? `${baseUrl}embed/tv/${tmdbId}/${s}/${e}`
               : `${baseUrl}embed/movie/${tmdbId}`;
           }
 
           // Fallback umum jika domain tidak dikenal
-          return isTv 
+          return isTv
             ? `${baseUrl}tv/${tmdbId}/${s}/${e}`
             : `${baseUrl}movie/${tmdbId}`;
         }
@@ -507,15 +508,19 @@ export default function Watch() {
     queryFn: () => VideoStore.filter({ id: videoId }),
     select: (data) => data[0],
     enabled: !!videoId,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
   });
 
   const { data: relatedVideos = [] } = useQuery({
     queryKey: ['related-videos', video?.id, video?.category, video?.genre],
     queryFn: async () => {
       if (!video) return [];
-      
+
       let related = [];
-      
+
       // 1. Cari berdasarkan kategori yang sama (Movie/TV)
       if (video.category) {
         const byCategory = await VideoStore.filter({ category: video.category }, '-created_date', 30);
@@ -526,7 +531,7 @@ export default function Watch() {
       if (video.genre) {
         const genres = video.genre.split(',').map(g => g.trim());
         const allVideos = await VideoStore.list('-created_date', 100);
-        
+
         const byGenre = allVideos.filter(v => {
           if (v.id === video.id) return false;
           const vGenres = v.genre ? v.genre.split(',').map(g => g.trim()) : [];
@@ -557,6 +562,10 @@ export default function Watch() {
       return uniqueRelated.slice(0, limit);
     },
     enabled: !!video,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
   });
 
   const filteredRelated = relatedVideos;
@@ -568,7 +577,7 @@ export default function Watch() {
         const yOffset = -50; // Diubah dari -100 ke -50 agar posisi player lebih turun lagi ke tengah layar
         const element = playerRef.current;
         const y = element.getBoundingClientRect().top + window.pageYOffset + yOffset;
-        
+
         window.scrollTo({ top: y, behavior: 'smooth' });
       }, 150);
     }
@@ -618,14 +627,14 @@ export default function Watch() {
 
   const iframeProps = (baseUrl.includes('vidsrcme.ru') || baseUrl.includes('superembed'))
     ? {
-        referrerPolicy: 'no-referrer',
-        allow: 'autoplay; encrypted-media; fullscreen; picture-in-picture',
-      }
+      referrerPolicy: 'no-referrer',
+      allow: 'autoplay; encrypted-media; fullscreen; picture-in-picture',
+    }
     : {
-        // Melonggarkan sandbox untuk domain kustom agar tidak terblokir
-        referrerPolicy: 'origin',
-        allow: 'autoplay; encrypted-media; fullscreen; picture-in-picture',
-      };
+      // Melonggarkan sandbox untuk domain kustom agar tidak terblokir
+      referrerPolicy: 'origin',
+      allow: 'autoplay; encrypted-media; fullscreen; picture-in-picture',
+    };
 
   const toggleFullscreen = async () => {
     // Jangan biarkan toggle ketika controls terkunci
@@ -659,13 +668,51 @@ export default function Watch() {
             className="fixed inset-0 z-[100] bg-black overflow-hidden"
           >
             {vidsrcUrl ? (
-              <iframe
-                src={vidsrcUrl}
-                className="absolute inset-0 w-full h-full z-10"
-                {...iframeProps}
-                allowFullScreen
-                title={video.title}
-              />
+              isAuthenticated ? (
+                <iframe
+                  src={vidsrcUrl}
+                  className="absolute inset-0 w-full h-full z-10"
+                  {...iframeProps}
+                  allowFullScreen
+                  title={video.title}
+                />
+              ) : (
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-4 bg-background/80 backdrop-blur-xl z-10 overflow-hidden">
+                  {/* Decorative Background Glows */}
+                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] bg-primary/20 rounded-full blur-[80px] pointer-events-none" />
+
+                  <motion.div
+                    initial={{ scale: 0.9, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ duration: 0.5, type: "spring" }}
+                    className="relative z-10 flex flex-col items-center max-w-lg w-full p-8 md:px-12 rounded-3xl border border-primary/60 bg-black/60 shadow-[0_0_40px_rgba(229,9,20,0.4),inset_0_0_20px_rgba(229,9,20,0.15)] backdrop-blur-xl"
+                  >
+                    <motion.div
+                      animate={{ y: [0, -8, 0] }}
+                      transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
+                      className="w-24 h-24 bg-gradient-to-br from-primary/30 to-primary/5 rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(229,9,20,0.3)] border border-primary/20"
+                    >
+                      <Lock className="w-10 h-10 text-primary drop-shadow-[0_0_15px_rgba(229,9,20,0.5)]" />
+                    </motion.div>
+
+                    <h3 className="text-base sm:text-lg md:text-xl font-semibold text-white mb-2 tracking-tight whitespace-nowrap [text-shadow:0_0_10px_#e50914,0_0_20px_#e50914,0_0_2px_#e50914]">
+                      {t('login.login_required') || 'Untuk pengalaman menonton film lebih baik lagi'}
+                    </h3>
+
+                    <p className="text-white/90 text-sm md:text-base leading-relaxed mb-8 px-4 [text-shadow:0_0_8px_rgba(229,9,20,0.8)]">
+                      {t('login.login_desc') || 'Harap Login/Buat akun terlebih dahulu'}
+                    </p>
+
+                    <Link
+                      to="/login"
+                      className="w-full sm:w-auto px-8 py-3.5 bg-primary hover:bg-primary/90 text-white font-bold rounded-full transition-all duration-300 shadow-[0_0_20px_rgba(229,9,20,0.4)] hover:shadow-[0_0_30px_rgba(229,9,20,0.6)] hover:-translate-y-1 flex items-center justify-center gap-2"
+                    >
+                      <LogIn className="w-5 h-5" />
+                      {t('login.button') || 'Masuk / Daftar'}
+                    </Link>
+                  </motion.div>
+                </div>
+              )
             ) : (
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-4">
                 <AlertCircle className="w-12 h-12 text-muted-foreground mb-3" />
@@ -675,13 +722,17 @@ export default function Watch() {
             )}
 
             {/* Header Controls - Versi Clean & Persistent */}
-            <div className="absolute top-0 left-0 right-0 p-6 flex items-center justify-between z-50 pointer-events-none">
-              <button
-                onClick={handleBackFromPlayer}
-                className="w-10 h-10 rounded-full bg-black/40 hover:bg-black/80 flex items-center justify-center transition-colors border border-white/10 backdrop-blur-md pointer-events-auto"
-              >
-                <ArrowLeft className="w-5 h-5 text-white" />
-              </button>
+            <div className="absolute top-0 left-0 right-0 mt-[env(safe-area-inset-top)] p-6 flex items-center justify-between z-50 pointer-events-none">
+              {!Capacitor.isNativePlatform() ? (
+                <button
+                  onClick={handleBackFromPlayer}
+                  className="w-10 h-10 rounded-full bg-black/40 hover:bg-black/80 flex items-center justify-center transition-colors border border-white/10 backdrop-blur-md pointer-events-auto"
+                >
+                  <ArrowLeft className="w-5 h-5 text-white" />
+                </button>
+              ) : (
+                <div></div>
+              )}
 
               <button
                 onClick={toggleFullscreen}
@@ -693,7 +744,7 @@ export default function Watch() {
             </div>
           </div>
         ) : (
-          <div 
+          <div
             ref={playerRef}
             className={`fixed inset-0 z-[100] bg-black overflow-hidden transition-all duration-300 ${!showControls ? 'cursor-none' : ''}`}
             onMouseMove={resetControlsTimeout}
@@ -702,14 +753,14 @@ export default function Watch() {
           >
             <div className="relative w-full h-full">
               {/* Overlay transparan tipis untuk menangkap klik saat kontrol tersembunyi */}
-              <div 
+              <div
                 className={`absolute inset-0 z-30 cursor-pointer ${showControls ? 'pointer-events-none' : 'pointer-events-auto'}`}
                 onClick={resetControlsTimeout}
               />
-              
+
               {/* Lock Overlay */}
               {isLocked && (
-                <div 
+                <div
                   className="absolute inset-0 z-40 bg-transparent pointer-events-auto"
                   onClick={() => {
                     setShowControls(true);
@@ -717,15 +768,53 @@ export default function Watch() {
                   }}
                 />
               )}
-              
+
               {vidsrcUrl ? (
-                <iframe
-                  src={vidsrcUrl}
-                  className="absolute inset-0 w-full h-full z-10"
-                  {...iframeProps}
-                  allowFullScreen
-                  title={video.title}
-                />
+                isAuthenticated ? (
+                  <iframe
+                    src={vidsrcUrl}
+                    className="absolute inset-0 w-full h-full z-10"
+                    {...iframeProps}
+                    allowFullScreen
+                    title={video.title}
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-4 bg-background/80 backdrop-blur-xl z-10 overflow-hidden">
+                    {/* Decorative Background Glows */}
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] bg-primary/20 rounded-full blur-[80px] pointer-events-none" />
+
+                    <motion.div
+                      initial={{ scale: 0.9, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{ duration: 0.5, type: "spring" }}
+                      className="relative z-10 flex flex-col items-center max-w-lg w-full p-8 md:px-12 rounded-3xl border border-primary/60 bg-black/60 shadow-[0_0_40px_rgba(229,9,20,0.4),inset_0_0_20px_rgba(229,9,20,0.15)] backdrop-blur-xl"
+                    >
+                      <motion.div
+                        animate={{ y: [0, -8, 0] }}
+                        transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
+                        className="w-24 h-24 bg-gradient-to-br from-primary/30 to-primary/5 rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(229,9,20,0.3)] border border-primary/20"
+                      >
+                        <Lock className="w-10 h-10 text-primary drop-shadow-[0_0_15px_rgba(229,9,20,0.5)]" />
+                      </motion.div>
+
+                      <h3 className="text-base sm:text-lg md:text-xl font-semibold text-white mb-2 tracking-tight whitespace-nowrap [text-shadow:0_0_10px_#e50914,0_0_20px_#e50914,0_0_2px_#e50914]">
+                        {t('login.login_required') || 'Untuk pengalaman menonton film lebih baik lagi'}
+                      </h3>
+
+                      <p className="text-white/90 text-sm md:text-base leading-relaxed mb-8 px-4 [text-shadow:0_0_8px_rgba(229,9,20,0.8)]">
+                        {t('login.login_desc') || 'Harap Login/Buat akun terlebih dahulu'}
+                      </p>
+
+                      <Link
+                        to="/login"
+                        className="w-full sm:w-auto px-8 py-3.5 bg-primary hover:bg-primary/90 text-white font-bold rounded-full transition-all duration-300 shadow-[0_0_20px_rgba(229,9,20,0.4)] hover:shadow-[0_0_30px_rgba(229,9,20,0.6)] hover:-translate-y-1 flex items-center justify-center gap-2"
+                      >
+                        <LogIn className="w-5 h-5" />
+                        {t('login.button') || 'Masuk / Daftar'}
+                      </Link>
+                    </motion.div>
+                  </div>
+                )
               ) : (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-4 z-10">
                   <AlertCircle className="w-12 h-12 text-muted-foreground mb-3" />
@@ -733,29 +822,33 @@ export default function Watch() {
                   <p className="text-sm text-muted-foreground max-w-md">{t('watch.add_tmdb')}</p>
                 </div>
               )}
-              
-              <div className={`absolute top-0 left-0 right-0 p-4 flex items-center justify-between z-50 transition-opacity duration-500 ${showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (!isLocked) {
-                      handleBackFromPlayer();
-                    }
-                  }}
-                  onTouchEnd={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (!isLocked) {
-                      handleBackFromPlayer();
-                    }
-                  }}
-                  type="button"
-                  disabled={isLocked}
-                  className={`w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 flex items-center justify-center transition-colors border border-white/10 backdrop-blur-md pointer-events-auto relative z-50 ${isLocked ? 'opacity-0' : 'opacity-100'}`}
-                >
-                  <ArrowLeft className="w-5 h-5 text-white" />
-                </button>
+
+              <div className={`absolute top-0 left-0 right-0 mt-[env(safe-area-inset-top)] p-4 flex items-center justify-between z-50 transition-opacity duration-500 ${showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+                {!Capacitor.isNativePlatform() ? (
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (!isLocked) {
+                        handleBackFromPlayer();
+                      }
+                    }}
+                    onTouchEnd={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (!isLocked) {
+                        handleBackFromPlayer();
+                      }
+                    }}
+                    type="button"
+                    disabled={isLocked}
+                    className={`w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 flex items-center justify-center transition-colors border border-white/10 backdrop-blur-md pointer-events-auto relative z-50 ${isLocked ? 'opacity-0' : 'opacity-100'}`}
+                  >
+                    <ArrowLeft className="w-5 h-5 text-white" />
+                  </button>
+                ) : (
+                  <div></div>
+                )}
 
                 <div className="flex items-center gap-2 pointer-events-auto">
                   {Capacitor.isNativePlatform() && (
@@ -791,7 +884,7 @@ export default function Watch() {
                       {isLocked ? <Lock className="w-4 h-4 text-white" /> : <Unlock className="w-4 h-4" />}
                     </button>
                   )}
-                  
+
                   <button
                     onClick={(e) => {
                       e.preventDefault();
@@ -876,7 +969,7 @@ export default function Watch() {
 
               {/* Buttons */}
               <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-1.5 md:mb-5">
-                <Link to="/">
+                <Link to="/" className="hidden md:block">
                   <Button
                     variant="secondary"
                     className="!h-auto bg-black/60 hover:bg-black/80 text-white font-semibold px-2.5 md:px-6 py-1 md:py-2 text-[10px] md:text-sm rounded-md md:rounded-lg gap-1 md:gap-2 border border-white/30 min-w-[85px] md:min-w-[120px]"
@@ -958,14 +1051,14 @@ export default function Watch() {
                                 <p className="text-[11px] text-white/40">{t('watch.download_subtitle')}</p>
                               </div>
                             </div>
-                            <button 
+                            <button
                               onClick={() => setShowSubtitleMenu(false)}
                               className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
                             >
                               <X className="w-4 h-4 text-white/60" />
                             </button>
                           </div>
-                          
+
                           {/* Content */}
                           <div className="flex-1 overflow-y-auto p-3 custom-scrollbar">
                             {isSearchingSubs ? (
@@ -1022,7 +1115,7 @@ export default function Watch() {
                               </div>
                             )}
                           </div>
-                          
+
                           {/* Footer */}
                           {subtitles.length > 0 && (
                             <div className="px-5 py-3 bg-white/5 border-t border-white/5 shrink-0">

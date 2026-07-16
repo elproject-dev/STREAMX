@@ -19,3 +19,11 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# --- CAPACITOR LOCAL PLUGINS RULES ---
+# Keep local Capacitor plugins and their annotations from being stripped by R8/ProGuard during Release builds
+-keep @com.getcapacitor.annotation.CapacitorPlugin class * { *; }
+-keepclassmembers class * extends com.getcapacitor.Plugin {
+    public <methods>;
+}
+-keep class com.streamx.app.ApkInstallerPlugin { *; }

@@ -1,9 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Film, Eye, EyeOff, Loader2, UserPlus, LogIn } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/lib/AuthContext';
 import { useLanguage } from '@/lib/i18n';
+import { Capacitor } from '@capacitor/core';
+import { App as CapacitorApp } from '@capacitor/app';
+import { toast } from 'sonner';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -17,6 +20,36 @@ export default function Login() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const lastBackPressTime = useRef(0);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    let backListener = null;
+
+    const setupListener = async () => {
+      backListener = await CapacitorApp.addListener('backButton', () => {
+        const currentTime = new Date().getTime();
+        if (currentTime - lastBackPressTime.current < 2000) {
+          CapacitorApp.exitApp();
+        } else {
+          toast(t('home.press_back_again') || 'Tekan sekali lagi untuk keluar', {
+            style: { justifyContent: 'center', textAlign: 'center' }
+          });
+          lastBackPressTime.current = currentTime;
+        }
+      });
+    };
+
+    setupListener();
+
+    return () => {
+      if (backListener) {
+        backListener.remove();
+      }
+    };
+  }, [t]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -204,13 +237,21 @@ export default function Login() {
                   </button>
                 </>
               )}
+              <div className="mt-5">
+                <Link
+                  to="/"
+                  className="text-muted-foreground hover:text-foreground hover:underline transition-colors text-xs font-medium"
+                >
+                  Not Now
+                </Link>
+              </div>
             </div>
           </form>
         </div>
 
         {/* Footer */}
         <p className="text-center text-muted-foreground text-xs mt-6">
-          STREAMX &copy; {new Date().getFullYear()}
+          {new Date().getFullYear()} &copy; STREAMX &copy; {new Date().getFullYear()}
         </p>
       </motion.div>
     </div>

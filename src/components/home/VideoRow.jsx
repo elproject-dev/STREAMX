@@ -2,9 +2,38 @@ import React, { useRef, useEffect, useState } from 'react';
 import VideoCard from './VideoCard';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
-export default function VideoRow({ title, videos, icon: Icon, isSlider = false, extraHeader = null, showDecorLine = true }) {
+export default function VideoRow({ title, videos, icon: Icon, isSlider = false, extraHeader = null, showDecorLine = true, isFirstRow = false }) {
   const scrollRef = useRef(null);
+  const scrollTimeout = useRef(null);
   const [isPaused, setIsPaused] = useState(false);
+
+  // Restore scroll position on mount
+  useEffect(() => {
+    if (isSlider && scrollRef.current) {
+      const savedScroll = sessionStorage.getItem(`scroll_${title}`);
+      if (savedScroll) {
+        // Hapus class scroll-smooth sementara agar restore terjadi instan tanpa animasi geser
+        scrollRef.current.classList.remove('scroll-smooth');
+        scrollRef.current.scrollLeft = parseInt(savedScroll, 10);
+        // Kembalikan class scroll-smooth setelah restore selesai
+        setTimeout(() => {
+          if (scrollRef.current) scrollRef.current.classList.add('scroll-smooth');
+        }, 50);
+      }
+    }
+  }, [isSlider, title]);
+
+  // Handle scroll event with debounce to save position
+  const handleScroll = () => {
+    if (isSlider && scrollRef.current) {
+      if (scrollTimeout.current) clearTimeout(scrollTimeout.current);
+      scrollTimeout.current = setTimeout(() => {
+        if (scrollRef.current) {
+          sessionStorage.setItem(`scroll_${title}`, scrollRef.current.scrollLeft);
+        }
+      }, 300);
+    }
+  };
 
   useEffect(() => {
     // Hanya aktifkan auto-slide jika ini adalah bagian Populer atau Terbaru
@@ -95,11 +124,12 @@ export default function VideoRow({ title, videos, icon: Icon, isSlider = false, 
             {/* Scrollable Area */}
             <div 
               ref={scrollRef}
+              onScroll={handleScroll}
               className="flex overflow-x-auto hide-scrollbar gap-4 md:gap-6 pb-4 scroll-smooth w-full snap-x snap-mandatory"
             >
               {videos.map((video, index) => (
-                <div key={video.id} className="w-[calc(33.333%-10.7px)] md:w-[calc(14.285%-20.6px)] shrink-0 snap-start">
-                  <VideoCard video={video} index={index} />
+                <div key={video.id} className="w-[calc(33.333%-10.7px)] sm:w-[calc(25%-12px)] lg:w-[calc(25%-18px)] xl:w-[calc(16.666%-20px)] 2xl:w-[calc(14.285%-20.6px)] shrink-0 snap-start">
+                  <VideoCard video={video} index={index} priority={index < 7} />
                 </div>
               ))}
             </div>
@@ -113,9 +143,9 @@ export default function VideoRow({ title, videos, icon: Icon, isSlider = false, 
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-4 md:gap-6">
+          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-7 gap-4 md:gap-6">
             {videos.map((video, index) => (
-              <VideoCard key={video.id} video={video} index={index} />
+              <VideoCard key={video.id} video={video} index={index} priority={index < 7} />
             ))}
           </div>
         )}
