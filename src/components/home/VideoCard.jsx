@@ -3,16 +3,37 @@ import { Play, Clock, Star } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { useFavorites } from '@/lib/FavoritesContext';
+import { useAuth } from '@/lib/AuthContext';
+import { useQueryClient } from '@tanstack/react-query';
+import { VideoStore } from '@/lib/videoStore';
+import { toast } from 'sonner';
 
 export default function VideoCard({ video, index = 0, priority = false }) {
   const [isHovered, setIsHovered] = useState(false);
   const { isFavorite, toggle } = useFavorites();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  
   const isFav = isFavorite(video.id);
+  const isAdmin = user?.role === 'admin' || user?.app_metadata?.role === 'admin' || user?.email === 'elproject.dev@gmail.com';
 
   const handleFavorite = (e) => {
     e.preventDefault();
     e.stopPropagation();
     toggle(video);
+  };
+
+  const handleDelete = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      await VideoStore.delete(video.id);
+      toast.success("Film berhasil dihapus permanen.");
+      queryClient.invalidateQueries({ queryKey: ['videos'] });
+    } catch (err) {
+      console.error(err);
+      toast.error("Gagal menghapus film.");
+    }
   };
 
   const poster = video.poster_url || video.thumbnail_url || `https://images.unsplash.com/photo-1485846234645-a62644f84728?w=400&q=60`;
@@ -75,8 +96,9 @@ export default function VideoCard({ video, index = 0, priority = false }) {
             )}
             {/* Favorite Star */}
             <button
-              onClick={handleFavorite}
+              onClick={isAdmin ? handleDelete : handleFavorite}
               className="absolute top-1 right-1 sm:top-1.5 sm:right-1.5 z-20 w-7 h-7 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center transition-all hover:scale-110 hover:bg-black/70"
+              title={isAdmin ? "Hapus Film Permanen" : ""}
             >
               <Star
                 className={`w-3.5 h-3.5 transition-colors ${isFav ? 'text-yellow-400 fill-yellow-400' : 'text-white/70'}`}
