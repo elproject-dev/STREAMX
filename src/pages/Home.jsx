@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { VideoStore } from '@/lib/videoStore';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Flame, Clock, Film, Plus, Search, X, Star } from 'lucide-react';
+import { Flame, Clock, Film, Plus, Search, X, Star, RefreshCw } from 'lucide-react';
 import VideoRow from '@/components/home/VideoRow';
 import PullToRefresh from '@/components/ui/PullToRefresh';
 import WelcomePopup from '@/components/ui/WelcomePopup';
@@ -14,6 +14,7 @@ import { useLanguage } from '@/lib/i18n';
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import { toast } from 'sonner';
+import { isTauri } from '@tauri-apps/api/core';
 
 let cachedTodayPicks = null;
 let cachedPopularVideos = null;
@@ -55,7 +56,13 @@ export default function Home() {
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const queryClient = useQueryClient();
   const { t } = useLanguage();
-  const limit = typeof window !== 'undefined' && window.innerWidth >= 1536 ? 28 : 24;
+
+  let isDesktopApp = false;
+  try {
+    isDesktopApp = isTauri();
+  } catch (e) {}
+
+  const limit = isDesktopApp ? 28 : (typeof window !== 'undefined' && window.innerWidth >= 1536 ? 28 : 24);
 
   const { data: videos = [], isLoading } = useQuery({
     queryKey: ['videos'],
@@ -255,22 +262,35 @@ export default function Home() {
           <div className="pt-20 md:pt-24 pb-10">
             {/* Search Header */}
             <div className="w-full px-4 md:px-10 mb-8 flex flex-col items-start gap-1">
-              <div className="relative w-full max-w-full">
-                <Input
-                  value={homeSearchQuery}
-                  onChange={(e) => setHomeSearchQuery(e.target.value)}
-                  placeholder={t('home.search_placeholder')}
-                className="pl-4 h-11 bg-card/50 backdrop-blur-sm border-white/10 focus:border-primary/50 transition-all rounded-xl text-left"
-              />
-              {homeSearchQuery && (
-                <button
-                  onClick={() => setHomeSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-secondary rounded-full transition-colors"
-                >
-                  <X className="w-4 h-4 text-muted-foreground" />
-                </button>
-              )}
-            </div>
+              <div className="relative w-full max-w-full flex gap-3">
+                <div className="relative flex-1">
+                  <Input
+                    value={homeSearchQuery}
+                    onChange={(e) => setHomeSearchQuery(e.target.value)}
+                    placeholder={t('home.search_placeholder')}
+                    className="pl-4 h-11 bg-card/50 backdrop-blur-sm border-white/10 focus:border-primary/50 transition-all rounded-xl text-left"
+                  />
+                  {homeSearchQuery && (
+                    <button
+                      onClick={() => setHomeSearchQuery('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-secondary rounded-full transition-colors"
+                    >
+                      <X className="w-4 h-4 text-muted-foreground" />
+                    </button>
+                  )}
+                </div>
+                {isDesktopApp && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handleRefresh}
+                    className="h-11 w-11 shrink-0 rounded-xl bg-card/50 backdrop-blur-sm border-white/10 hover:bg-card/80 flex items-center justify-center transition-all shadow-sm group"
+                    title="Refresh Halaman"
+                  >
+                    <RefreshCw className="w-5 h-5 text-muted-foreground group-hover:text-foreground transition-colors" />
+                  </Button>
+                )}
+              </div>
             {homeSearchQuery && (
               <p className="text-sm text-muted-foreground mt-2 animate-in fade-in slide-in-from-top-1 px-1">
                 {isSearchingVideos
