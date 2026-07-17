@@ -7,6 +7,9 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import VideoRow from '@/components/home/VideoRow';
 import { useAuth } from '@/lib/AuthContext';
+import { openExternalUrl } from '@/lib/openUrl';
+
+
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -376,7 +379,7 @@ export default function Watch() {
       try {
         const downloadLink = await VideoStore.getSubtitleDownloadLink(fileId);
         if (downloadLink) {
-          window.open(downloadLink, '_blank');
+          openExternalUrl(downloadLink);
         } else {
           toast.error(t('watch.subtitle_download_fail'));
         }

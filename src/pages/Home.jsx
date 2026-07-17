@@ -3,7 +3,6 @@ import { VideoStore } from '@/lib/videoStore';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Flame, Clock, Film, Plus, Search, X, Star } from 'lucide-react';
 import VideoRow from '@/components/home/VideoRow';
-import UpdateChecker from '@/components/layout/UpdateChecker';
 import PullToRefresh from '@/components/ui/PullToRefresh';
 import WelcomePopup from '@/components/ui/WelcomePopup';
 import { Skeleton } from '@/components/ui/skeleton';

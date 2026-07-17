@@ -1,7 +1,7 @@
-export const APP_VERSION = '1.0.8';
+export const APP_VERSION = '1.0.16';
 export const SKIP_VERSION_KEY = 'streamx_skipped_version';
 export const RELEASE_CHANGELOG = [
-  "Perbaikan Kelola Video"
+  "Update Apps"
 ];
 
 /**

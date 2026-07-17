@@ -4,6 +4,8 @@ import { X, PlayCircle, Monitor, Smartphone, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { getAppSettings } from '@/lib/appSettings';
 import { toast } from 'sonner';
+import { isTauri } from '@tauri-apps/api/core';
+import { openExternalUrl } from '@/lib/openUrl';
 
 export default function WelcomePopup() {
   const [isOpen, setIsOpen] = useState(false);
@@ -14,10 +16,13 @@ export default function WelcomePopup() {
     const hasSeen = sessionStorage.getItem('streamx_welcome_seen');
     
     // Jangan tampilkan jika berjalan di native Android/Windows (Capacitor/Tauri)
-    const isNativeAndroid = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform();
-    const isDesktop = typeof window !== 'undefined' && !!window.__TAURI__;
+    const isAndroid = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform();
+    let isDesktop = false;
+    try {
+      isDesktop = isTauri();
+    } catch(e) {}
 
-    if (!hasSeen && !isNativeAndroid && !isDesktop) {
+    if (!hasSeen && !isAndroid && !isDesktop) {
       // Beri sedikit jeda (delay) sebelum popup muncul agar tidak mengagetkan
       const timer = setTimeout(() => {
         setIsOpen(true);
@@ -54,7 +59,7 @@ export default function WelcomePopup() {
       toast.error(`Link unduhan untuk ${os} belum tersedia saat ini.`);
       return;
     }
-    window.open(url, '_blank');
+    openExternalUrl(url);
     handleClose();
   };
 

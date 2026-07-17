@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "StreamX",
-  "version": "1.0.8",
+  "version": "1.0.16",
   "identifier": "com.streamx.app",
   "build": {
     "frontendDist": "../dist",
@@ -26,10 +26,17 @@
   "plugins": {
     "shell": {
       "open": true
+    },
+    "updater": {
+      "endpoints": [
+        "https://latyqaoxpdizvttxlbfa.supabase.co/storage/v1/object/public/app-releases/windows/updater.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhERjk1M0MzNjgyQzA5MjgKUldRb0NTeG93MVA1alJTOCtJZUdTYjlLa0NlSGRrNTh1eUpacGg2UVh2QU1mZGx5N2l1RmhrSHIK"
     }
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "icon": [
       "icons/32x32.png",

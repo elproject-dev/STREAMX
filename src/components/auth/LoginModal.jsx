@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/lib/AuthContext';
 import { useLanguage } from '@/lib/i18n';
 import * as Dialog from '@radix-ui/react-dialog';
-import { Link } from 'react-router-dom';
 
 export default function LoginModal({ isOpen, onOpenChange }) {
   const { login, signup } = useAuth();

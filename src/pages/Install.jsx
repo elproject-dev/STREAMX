@@ -4,9 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
 import { getAppSettings } from '@/lib/appSettings';
-import { open } from '@tauri-apps/plugin-shell';
-import { Browser } from '@capacitor/browser';
-import { Capacitor } from '@capacitor/core';
+import { openExternalUrl } from '@/lib/openUrl';
 
 // Deteksi Tauri runtime
 const isTauri = typeof window !== 'undefined' && window.__TAURI_INTERNALS__;
@@ -25,13 +23,7 @@ export default function Install() {
     const normalizedUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`;
 
     try {
-      if (isTauri) {
-        await open(normalizedUrl);
-      } else if (Capacitor.isNativePlatform()) {
-        await Browser.open({ url: normalizedUrl });
-      } else {
-        window.open(normalizedUrl, '_blank', 'noopener,noreferrer');
-      }
+      openExternalUrl(normalizedUrl);
     } catch (error) {
       console.error('Error opening URL:', error);
       // Fallback

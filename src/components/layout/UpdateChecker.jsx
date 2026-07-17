@@ -4,6 +4,10 @@ import { getAppSettings } from '@/lib/appSettings';
 import { APP_VERSION, isUpdateAvailable } from '@/lib/version';
 import { downloadAndInstallApk } from '@/lib/apkInstaller';
 import { Button } from '@/components/ui/button';
+import { isTauri } from '@tauri-apps/api/core';
+import { openExternalUrl } from '@/lib/openUrl';
+import { check } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
 
 const SESSION_CACHE_KEY = 'streamx_update_checked';
 const SKIP_VERSION_KEY = 'streamx_skip_version';
@@ -30,7 +34,10 @@ export default function UpdateChecker() {
 
         if (hasUpdate) {
           const isAndroid = !!window.Capacitor?.isNativePlatform();
-          const isDesktop = !!window.__TAURI__;
+          let isDesktop = false;
+          try {
+            isDesktop = isTauri();
+          } catch(e) {}
           
           let downloadUrl = '';
           if (isAndroid) downloadUrl = data.install_android;
@@ -102,7 +109,63 @@ export default function UpdateChecker() {
         setIsDownloading(false);
       }
     } else {
-      window.open(updateInfo.downloadUrl, '_blank');
+      let isDesktopApp = false;
+      try {
+        isDesktopApp = isTauri();
+      } catch (e) {}
+
+      if (isDesktopApp) {
+        try {
+          setIsDownloading(true);
+          setDownloadError(null);
+          setProgress({ percent: 0, status: 'Mengecek pembaruan...' });
+          
+          const update = await check();
+          if (update) {
+            setProgress({ percent: 0, status: 'Mengunduh...' });
+            let downloaded = 0;
+            let contentLength = 0;
+            let lastPct = -1;
+            
+            await update.downloadAndInstall((event) => {
+              switch (event.event) {
+                case 'Started':
+                  contentLength = event.data.contentLength;
+                  setProgress({ percent: 0, status: 'Mulai mengunduh...' });
+                  break;
+                case 'Progress':
+                  downloaded += event.data.chunkLength;
+                  if (contentLength > 0) {
+                    const pct = Math.round((downloaded / contentLength) * 100);
+                    if (pct !== lastPct) {
+                      lastPct = pct;
+                      setProgress({ percent: pct, status: `Mengunduh... ${pct}%` });
+                    }
+                  }
+                  break;
+                case 'Finished':
+                  setProgress({ percent: 100, status: 'Instalasi selesai! Memuat ulang...' });
+                  break;
+              }
+            });
+            await relaunch();
+          } else {
+            // Update not found via plugin-updater yet, fallback
+            openExternalUrl(updateInfo.downloadUrl);
+            setIsDownloading(false);
+          }
+        } catch (e) {
+          console.error("Gagal melakukan auto-update Tauri:", e);
+          setDownloadError("Gagal update otomatis. Membuka di browser...");
+          setTimeout(() => {
+            openExternalUrl(updateInfo.downloadUrl);
+            setIsDownloading(false);
+            setIsOpen(false);
+          }, 2000);
+        }
+      } else {
+        openExternalUrl(updateInfo.downloadUrl);
+      }
     }
   };
 

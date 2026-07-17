@@ -56,7 +56,7 @@ export default function VideoCard({ video, index = 0, priority = false }) {
               src={poster}
               alt={video.title}
               loading={priority ? "eager" : "lazy"}
-              fetchpriority={priority ? "high" : "auto"}
+              fetchPriority={priority ? "high" : "auto"}
               decoding={priority ? "sync" : "async"}
               className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
             />

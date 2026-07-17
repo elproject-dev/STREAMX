@@ -37,6 +37,11 @@ async function runRelease() {
 
     // 2. Build Web dan Aplikasi Tauri Desktop
     console.log('🏗️ Menjalankan build Web Vite dan Tauri Build...');
+    const bundleDir = path.resolve(__dirname, '../src-tauri/target/release/bundle');
+    if (fs.existsSync(bundleDir)) {
+      console.log('🗑️ Membersihkan folder bundle lama lokal...');
+      fs.rmSync(bundleDir, { recursive: true, force: true });
+    }
     execSync('npm run build', { cwd: path.resolve(__dirname, '..'), stdio: 'inherit' });
     execSync('npx tauri build', { cwd: path.resolve(__dirname, '..'), stdio: 'inherit' });
 
@@ -48,23 +53,31 @@ async function runRelease() {
 
     const files = fs.readdirSync(nsisDir);
     const exeFile = files.find(f => f.endsWith('-setup.exe') || (f.endsWith('.exe') && !f.includes('uninst')));
-
+    
     if (!exeFile) {
-      throw new Error(`File installer EXE tidak ditemukan di dalam folder ${nsisDir}.`);
+      throw new Error(`File installer EXE tidak ditemukan di dalam folder ${nsisDir}. Pastikan proses build Tauri berhasil.`);
+    }
+    
+    const sigFile = files.find(f => f === `${exeFile}.sig`);
+    if (!sigFile) {
+      throw new Error(`File signature (.sig) untuk installer ${exeFile} tidak ditemukan! Pastikan tauri updater sudah dikonfigurasi.`);
     }
 
     const exePath = path.join(nsisDir, exeFile);
-    console.log(`✅ File installer EXE ditemukan: ${exeFile}`);
+    const sigPath = path.join(nsisDir, sigFile);
+    console.log(`✅ File installer ditemukan: ${exeFile} dan signature-nya`);
 
     // 4. Bersihkan file lama di folder windows bucket
     const fileName = `StreamX_v.${version}_setup.exe`;
-    const storagePath = `windows/${fileName}`;
+    const sigName = `StreamX_v.${version}_setup.exe.sig`;
+    const storagePathExe = `windows/${fileName}`;
+    const storagePathSig = `windows/${sigName}`;
 
     console.log(`\n🗑️ Membersihkan installer versi lama di Supabase Storage...`);
     const { data: existingFiles } = await supabase.storage.from('app-releases').list('windows');
     if (existingFiles && existingFiles.length > 0) {
       const filesToDelete = existingFiles
-        .filter(f => f.name !== fileName && f.name !== '.emptyFolderPlaceholder')
+        .filter(f => f.name !== fileName && f.name !== sigName && f.name !== 'updater.json' && f.name !== '.emptyFolderPlaceholder')
         .map(f => `windows/${f.name}`);
 
       if (filesToDelete.length > 0) {
@@ -73,29 +86,33 @@ async function runRelease() {
       }
     }
 
-    // 5. Upload EXE Baru ke Supabase Storage
-    console.log(`☁️ Mengupload ${fileName} ke Supabase Storage (app-releases/windows)...`);
+    // 5. Upload File Baru ke Supabase Storage
+    console.log(`☁️ Mengupload file EXE dan SIG ke Supabase Storage...`);
 
-    const exeBuffer = fs.readFileSync(exePath);
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('app-releases')
-      .upload(storagePath, exeBuffer, {
-        contentType: 'application/x-msdownload',
-        upsert: true
-      });
+    const uploadFile = async (filePath, storagePath, contentType) => {
+      const buffer = fs.readFileSync(filePath);
+      const { error } = await supabase.storage
+        .from('app-releases')
+        .upload(storagePath, buffer, { contentType, upsert: true });
+      if (error) throw new Error(`Gagal upload ${storagePath}: ${error.message}`);
+      return supabase.storage.from('app-releases').getPublicUrl(storagePath).data.publicUrl;
+    };
 
-    if (uploadError) {
-      throw new Error(`Gagal upload EXE: ${uploadError.message}. Pastikan bucket 'app-releases' ada di Supabase Anda.`);
-    }
+    const exeUrl = await uploadFile(exePath, storagePathExe, 'application/x-msdownload');
+    const sigUrl = await uploadFile(sigPath, storagePathSig, 'text/plain');
 
-    // Dapatkan Public URL
-    const { data: publicUrlData } = supabase.storage.from('app-releases').getPublicUrl(storagePath);
-    const downloadUrl = publicUrlData.publicUrl;
-    console.log(`✅ Upload berhasil! URL Publik: ${downloadUrl}`);
+    console.log(`✅ Upload berhasil! URL EXE: ${exeUrl}`);
 
-    // 6. Update Database app_settings
-    console.log('\n🔄 Memperbarui versi, changelog, dan link download di Database app_settings...');
+    // Dapatkan Signature Content
+    const signatureContent = fs.readFileSync(sigPath, 'utf-8');
 
+    // 6. Buat dan Upload updater.json
+    console.log(`☁️ Membuat dan mengupload updater.json...`);
+    
+    // Ambil pub_date
+    const pubDate = new Date().toISOString();
+    
+    // Ambil changelog
     const changelogMatch = versionFileContent.match(/export const RELEASE_CHANGELOG = \[([\s\S]*?)\];/);
     let changelogString = "";
     if (changelogMatch && changelogMatch[1]) {
@@ -103,11 +120,39 @@ async function runRelease() {
       if (items.length > 0) changelogString = items.join('\n');
     }
 
+    const updaterJson = {
+      version: version,
+      notes: changelogString || "Pembaruan minor dan perbaikan bug.",
+      pub_date: pubDate,
+      platforms: {
+        "windows-x86_64": {
+          signature: signatureContent,
+          url: exeUrl
+        }
+      }
+    };
+
+    const updaterBuffer = Buffer.from(JSON.stringify(updaterJson, null, 2));
+    const { error: updaterError } = await supabase.storage
+      .from('app-releases')
+      .upload('windows/updater.json', updaterBuffer, {
+        contentType: 'application/json',
+        upsert: true
+      });
+      
+    if (updaterError) throw new Error(`Gagal upload updater.json: ${updaterError.message}`);
+    console.log(`✅ updater.json berhasil diperbarui!`);
+
+    // 6. Update Database app_settings
+    console.log('\n🔄 Memperbarui versi, changelog, dan link download di Database app_settings...');
+
+
+
     const { error: dbError } = await supabase
       .from('app_settings')
       .upsert({ 
         id: 'global', 
-        install_windows: downloadUrl,
+        install_windows: exeUrl,
         app_version_latest: version,
         update_changelog: changelogString || null
       }, { onConflict: 'id' });
