@@ -12,7 +12,8 @@
     "version": "node scripts/bump-version.js",
     "release:android": "node scripts/release.js",
     "release:desktop": "node scripts/release-desktop.js",
-    "upload": "node scripts/import-movies.js"
+    "upload": "node scripts/import-movies.js",
+    "upload-animation": "node scripts/import-animation.js"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.1",
