@@ -3,13 +3,20 @@ import { cn } from '@/lib/utils';
 
 export function WebBannerAd({ className, adSlot, style, adFormat = "auto", fullWidthResponsive = "true" }) {
   useEffect(() => {
-    try {
-      // Inisialisasi unit iklan (Google AdSense)
-      // Array adsbygoogle didorong saat komponen dipasang ke DOM
-      (window.adsbygoogle = window.adsbygoogle || []).push({});
-    } catch (err) {
-      console.error("AdSense error", err);
-    }
+    // Memberi jeda waktu sebentar agar browser selesai merender CSS
+    // dan menghitung lebar (width) container sebelum memanggil AdSense.
+    const timeoutId = setTimeout(() => {
+      try {
+        (window.adsbygoogle = window.adsbygoogle || []).push({});
+      } catch (err) {
+        // Kita abaikan error ini jika muncul berulang kali akibat React StrictMode
+        if (!err.message.includes("availableWidth=0") && !err.message.includes("already")) {
+           console.error("AdSense error:", err);
+        }
+      }
+    }, 150);
+
+    return () => clearTimeout(timeoutId);
   }, []);
 
   return (
@@ -25,10 +32,11 @@ export function WebBannerAd({ className, adSlot, style, adFormat = "auto", fullW
       <ins
         className="adsbygoogle"
         style={{ display: 'block', minHeight: '90px', ...style }}
-        data-ad-client="ca-pub-4330686550985391" // TODO: Ganti dengan Client ID AdSense
-        data-ad-slot={adSlot || "YYYYYYYYYY"}      // TODO: Ganti dengan Slot ID AdSense
+        data-ad-client="ca-pub-4330686550985391"
+        data-ad-slot={adSlot || "YYYYYYYYYY"}
         data-ad-format={adFormat}
         data-full-width-responsive={fullWidthResponsive}
+        {...(process.env.NODE_ENV === 'development' ? { 'data-ad-test': 'on' } : {})}
       />
       {/* Teks placeholder sementara (bisa dihapus nanti) */}
       {!adSlot && (
