@@ -24,12 +24,11 @@ if (!supabaseUrl || !supabaseKey) {
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // ==========================================
-// SCRIPT IMPORT ANIMATION MOVIES VIA CLI
+// SCRIPT IMPORT POPULAR MOVIES GLOBAL VIA CLI
 // ==========================================
 
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 const TMDB_IMG = 'https://image.tmdb.org/t/p';
-const ANIMATION_GENRE_ID = 16;
 
 async function fetchFromTmdb(path) {
   const url = tmdbBearer
@@ -135,28 +134,45 @@ async function checkVidsrcAvailability(tmdbId, contentType) {
   }
 }
 
-async function fetchAnimationMovieIds(startPage, endPage, minPopularity = 0) {
+async function fetchPopularMovieIds(minPopularity = 0) {
   const ids = [];
-  console.log(`\n📥 Mengambil daftar film animasi dari TMDB (Halaman ${startPage} - ${endPage})...`);
-  for (let page = startPage; page <= endPage; page++) {
-    try {
-      const data = await fetchFromTmdb(`/discover/movie?with_genres=${ANIMATION_GENRE_ID}&page=${page}&sort_by=popularity.desc`);
-      if (data && data.results) {
-        data.results.forEach(movie => {
-          if (movie.popularity >= minPopularity) {
-            ids.push(movie.id);
-          }
-        });
-      }
-      // Tampilkan indikator proses setiap 10 halaman agar tidak terlihat stuck
-      if (page % 10 === 0) {
-        process.stdout.write('.');
-      }
-      await new Promise(resolve => setTimeout(resolve, 200));
-    } catch (e) {
-      console.log(`   ⚠️ Gagal mengambil halaman ${page}: ${e.message}`);
+  console.log(`\n📥 Memulai pencarian otomatis film terpopuler global dari TMDB...`);
+
+  try {
+    // Ambil halaman 1 untuk mendapatkan total_pages
+    const firstPageData = await fetchFromTmdb(`/discover/movie?sort_by=popularity.desc&page=1`);
+    if (!firstPageData || !firstPageData.results) {
+      console.log(`   ⚠️ Gagal mendapatkan data awal dari TMDB.`);
+      return ids;
     }
+
+    // TMDB membatasi page maksimum hingga 500
+    const totalPages = Math.min(firstPageData.total_pages || 1, 500);
+    console.log(`📊 Ditemukan total ${totalPages} halaman (maks 500) untuk diproses otomatis.`);
+
+    for (let page = 1; page <= totalPages; page++) {
+      try {
+        const data = await fetchFromTmdb(`/discover/movie?sort_by=popularity.desc&page=${page}`);
+        if (data && data.results) {
+          data.results.forEach(movie => {
+            if (movie.popularity >= minPopularity) {
+              ids.push(movie.id);
+            }
+          });
+        }
+        // Tampilkan indikator proses setiap 10 halaman agar tidak terlihat stuck
+        if (page % 10 === 0) {
+          process.stdout.write('.');
+        }
+        await new Promise(resolve => setTimeout(resolve, 200));
+      } catch (e) {
+        console.log(`   ⚠️ Gagal mengambil halaman ${page}: ${e.message}`);
+      }
+    }
+  } catch (err) {
+    console.log(`   ⚠️ Terjadi kesalahan: ${err.message}`);
   }
+
   return [...new Set(ids)]; // Hapus duplikat jika ada
 }
 
@@ -168,31 +184,14 @@ async function run() {
 
   const question = (query) => new Promise((resolve) => rl.question(query, resolve));
 
-  const startPageStr = await question('Masukkan halaman mulai TMDB (contoh: 1, maks: 500): ');
-  const endPageStr = await question('Masukkan halaman akhir TMDB (contoh: 5, maks: 500): ');
   const minPopStr = await question('Masukkan minimum popularity (contoh: 15, atau 0 untuk semua): ');
-
-  const startPage = parseInt(startPageStr, 10);
-  const endPage = parseInt(endPageStr, 10);
   const minPop = parseFloat(minPopStr) || 0;
-
-  if (isNaN(startPage) || isNaN(endPage) || startPage > endPage || startPage < 1) {
-    console.error('❌ Input tidak valid. Pastikan halaman berupa angka, mulai dari 1, dan halaman awal tidak lebih besar dari akhir.');
-    rl.close();
-    process.exit(1);
-  }
-
-  if (endPage > 500) {
-    console.error('❌ TMDB membatasi pencarian (Discover) maksimal hanya sampai halaman 500 (10.000 film). Harap masukkan halaman akhir maksimal 500.');
-    rl.close();
-    process.exit(1);
-  }
 
   let MOVIE_IDS = [];
   try {
-    MOVIE_IDS = await fetchAnimationMovieIds(startPage, endPage, minPop);
+    MOVIE_IDS = await fetchPopularMovieIds(minPop);
     if (MOVIE_IDS.length === 0) {
-      console.log(`\n❌ Tidak ditemukan satupun film animasi di rentang halaman tersebut dengan popularity >= ${minPop}.`);
+      console.log(`\n❌ Tidak ditemukan satupun film dengan popularity >= ${minPop}.`);
       rl.close();
       return;
     }
@@ -202,7 +201,7 @@ async function run() {
     return;
   }
 
-  console.log(`\n🚀 Memulai proses import ${MOVIE_IDS.length} film animasi...\n`);
+  console.log(`\n🚀 Memulai proses import ${MOVIE_IDS.length} film populer...\n`);
 
   const successList = [];
   const failedTmdbList = [];
@@ -263,7 +262,7 @@ async function run() {
 
   // Laporan Akhir
   console.log(`\n==========================================`);
-  console.log(`📊 LAPORAN IMPORT ANIMATION MOVIES`);
+  console.log(`📊 LAPORAN IMPORT POPULAR MOVIES GLOBAL`);
   console.log(`==========================================`);
   console.log(`Total Diproses   : ${MOVIE_IDS.length}`);
   console.log(`✅ Sukses        : ${successList.length}`);
