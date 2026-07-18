@@ -15,7 +15,7 @@ export default function AppLayout() {
       
       {/* Container Iklan Global di atas Footer */}
       <div className="container mx-auto px-4 max-w-7xl">
-        <WebBannerAd adSlot="" />
+        <WebBannerAd adSlot="9800843677" />
       </div>
 
       <Footer />
