@@ -59,7 +59,12 @@ export default function Profile() {
     android: localStorage.getItem('streamx_install_android') || '',
     windows: localStorage.getItem('streamx_install_windows') || ''
   });
-  const [playerUrl, setPlayerUrl] = useState(localStorage.getItem('streamx_player_url') || 'https://vidsrcme.ru/embed/');
+  const [playerUrls, setPlayerUrls] = useState(() => {
+    const saved = localStorage.getItem('streamx_player_url') || 'https://vidsrcme.ru/embed/';
+    let cleanedUrl = saved.replace(/https?:\/\//g, (match, offset) => (offset > 0 ? `\n${match}` : match));
+    const urls = cleanedUrl.split(/[\n,\s]+/).map(u => u.trim()).filter(Boolean);
+    return urls.length > 0 ? urls : ['https://vidsrcme.ru/embed/'];
+  });
   const [uploadingApp, setUploadingApp] = useState({ android: false, windows: false });
   const androidInputRef = useRef(null);
   const windowsInputRef = useRef(null);
@@ -86,7 +91,9 @@ export default function Profile() {
         localStorage.setItem('streamx_install_windows', data.install_windows || '');
       }
       if (typeof data.player_url === 'string' && data.player_url) {
-        setPlayerUrl(data.player_url);
+        let cleanedUrl = data.player_url.replace(/https?:\/\//g, (match, offset) => (offset > 0 ? `\n${match}` : match));
+        const urls = cleanedUrl.split(/[\n,\s]+/).map(u => u.trim()).filter(Boolean);
+        setPlayerUrls(urls.length > 0 ? urls : ['https://vidsrcme.ru/embed/']);
         localStorage.setItem('streamx_player_url', data.player_url);
       }
     };
@@ -102,8 +109,8 @@ export default function Profile() {
     localStorage.setItem('streamx_font_size', fontSize);
     localStorage.setItem('streamx_install_android', appUrls.android);
     localStorage.setItem('streamx_install_windows', appUrls.windows);
-    localStorage.setItem('streamx_player_url', playerUrl);
-  }, [fontSize, appUrls, playerUrl]);
+    localStorage.setItem('streamx_player_url', playerUrls.join(','));
+  }, [fontSize, appUrls, playerUrls]);
 
   useEffect(() => {
     localStorage.setItem('streamx_subtitle_lang', subtitleLang);
@@ -138,7 +145,7 @@ export default function Profile() {
       const { error } = await saveAppSettings({
         install_android: appUrls.android,
         install_windows: appUrls.windows,
-        player_url: playerUrl,
+        player_url: playerUrls.join(','),
       });
 
       if (error) {
@@ -561,20 +568,49 @@ export default function Profile() {
                 </div>
                 
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-muted-foreground">
+                  <label className="text-xs font-medium text-muted-foreground flex justify-between">
                     URL Media Player (Embed)
+                    <button 
+                      type="button"
+                      onClick={() => setPlayerUrls([...playerUrls, ''])}
+                      className="text-primary hover:text-primary/80 font-bold text-[10px] flex items-center gap-1"
+                    >
+                      + Tambah Server
+                    </button>
                   </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={playerUrl}
-                      onChange={(e) => setPlayerUrl(e.target.value)}
-                      placeholder="https://vidsrcme.ru/embed/..."
-                      className="flex-1 px-3 py-2 bg-background border border-border rounded-lg text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-primary"
-                    />
+                  
+                  <div className="space-y-2">
+                    {playerUrls.map((url, index) => (
+                      <div key={index} className="flex gap-2">
+                        <input
+                          type="text"
+                          value={url}
+                          onChange={(e) => {
+                            const newUrls = [...playerUrls];
+                            newUrls[index] = e.target.value;
+                            setPlayerUrls(newUrls);
+                          }}
+                          placeholder={`Server ${index + 1} (contoh: https://vidlink.pro/)`}
+                          className="flex-1 px-3 py-2 bg-background border border-border rounded-lg text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                        {playerUrls.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newUrls = playerUrls.filter((_, i) => i !== index);
+                              setPlayerUrls(newUrls);
+                            }}
+                            className="p-2 border border-red-500/30 text-red-500 rounded-lg hover:bg-red-500/10 transition-colors"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                          </button>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                  <p className="text-[10px] text-muted-foreground italic">
-                    URL dasar untuk player video (contoh: VidSrc). Digunakan sebagai fallback jika server player utama bermasalah.
+                  
+                  <p className="text-[10px] text-muted-foreground italic mt-2">
+                    Tambahkan banyak server agar penonton bisa memilih secara otomatis jika server utama bermasalah.
                   </p>
                 </div>
               </div>

@@ -32,6 +32,7 @@ export default function Watch() {
   const [isLocked, setIsLocked] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [showSubtitleMenu, setShowSubtitleMenu] = useState(false);
+  const [activeServerIndex, setActiveServerIndex] = useState(0);
   const [subtitles, setSubtitles] = useState([]);
   const [isSearchingSubs, setIsSearchingSubs] = useState(false);
   const [isDownloadingSubs, setIsDownloadingSubs] = useState(null);
@@ -464,7 +465,20 @@ export default function Watch() {
     };
   }, [isLocked]);
 
-  const baseUrl = playerBaseUrl.endsWith('/') ? playerBaseUrl : `${playerBaseUrl}/`;
+  const serverUrls = useMemo(() => {
+    if (!playerBaseUrl) return ['https://vidsrcme.ru/embed/'];
+    
+    // Perbaiki jika URL tergabung menjadi satu tanpa pemisah (karena efek <input> text sebelumnya)
+    let cleanedUrl = playerBaseUrl.replace(/https?:\/\//g, (match, offset) => (offset > 0 ? `\n${match}` : match));
+    
+    // Pisahkan berdasarkan baris baru, koma, atau spasi
+    return cleanedUrl.split(/[\n,\s]+/).map(u => u.trim()).filter(Boolean);
+  }, [playerBaseUrl]);
+
+  // Fallback ke server 0 jika index di luar batas
+  const safeServerIndex = activeServerIndex >= serverUrls.length ? 0 : activeServerIndex;
+  const currentBaseUrl = serverUrls[safeServerIndex] || serverUrls[0] || 'https://vidsrcme.ru/embed/';
+  const baseUrl = currentBaseUrl.endsWith('/') ? currentBaseUrl : `${currentBaseUrl}/`;
 
   const { data: video, isLoading } = useQuery({
     queryKey: ['video', videoId],
@@ -589,10 +603,37 @@ export default function Watch() {
   if (video?.tmdb_id) {
     const isTv = video.content_type === 'tv';
     const tmdbId = video.tmdb_id;
+    const imdbId = video.imdb_id || tmdbId;
     const s = video.season || 1;
     const e = video.episode || 1;
 
-    if (baseUrl.includes('vidsrcme.ru')) {
+    if (baseUrl.includes('play.xpass.top')) {
+      vidsrcUrl = isTv
+        ? `${baseUrl}e/tv/${tmdbId}/${s}/${e}`
+        : `${baseUrl}e/movie/${tmdbId}`;
+    } else if (baseUrl.includes('vsembed.ru')) {
+      vidsrcUrl = isTv
+        ? `${baseUrl}embed/tv/${imdbId}/${s}/${e}`
+        : `${baseUrl}embed/movie/${imdbId}`;
+    } else if (baseUrl.includes('vidzee.wtf')) {
+      const base = baseUrl.includes('/embed') ? baseUrl : `${baseUrl}embed/`;
+      vidsrcUrl = isTv
+        ? `${base}tv/${tmdbId}/${s}/${e}`
+        : `${base}movie/${tmdbId}`;
+    } else if (baseUrl.includes('primesrc.me')) {
+      const base = baseUrl.includes('/embed') ? baseUrl : `${baseUrl}embed/`;
+      vidsrcUrl = isTv
+        ? `${base}tv?imdb=${imdbId}&season=${s}&episode=${e}`
+        : `${base}movie?imdb=${imdbId}`;
+    } else if (baseUrl.includes('vixsrc.to')) {
+      vidsrcUrl = isTv
+        ? `${baseUrl}tv/${tmdbId}/${s}/${e}`
+        : `${baseUrl}movie/${tmdbId}`;
+    } else if (baseUrl.includes('cinesrc.st')) {
+      vidsrcUrl = isTv
+        ? `${baseUrl}embed/tv/${tmdbId}/${s}/${e}`
+        : `${baseUrl}embed/movie/${tmdbId}`;
+    } else if (baseUrl.includes('vidsrcme.ru')) {
       vidsrcUrl = isTv
         ? `${baseUrl}tv?tmdb=${tmdbId}&season=${s}&episode=${e}`
         : `${baseUrl}movie?tmdb=${tmdbId}`;
@@ -709,25 +750,57 @@ export default function Watch() {
             )}
 
             {/* Header Controls - Versi Clean & Persistent */}
-            <div className="absolute top-0 left-0 right-0 mt-[env(safe-area-inset-top)] p-6 flex items-center justify-between z-50 pointer-events-none">
-              {!Capacitor.isNativePlatform() ? (
+            <div className="absolute top-0 left-0 right-0 mt-[env(safe-area-inset-top)] w-full h-24 z-50 pointer-events-none">
+              {!Capacitor.isNativePlatform() && (
                 <button
                   onClick={handleBackFromPlayer}
-                  className="w-10 h-10 rounded-full bg-black/40 hover:bg-black/80 flex items-center justify-center transition-colors border border-white/10 backdrop-blur-md pointer-events-auto"
+                  // Sesuaikan nilai left-[...] dan top-[...] di bawah ini untuk menggeser tombol
+                  className="absolute top-[35px] left-[35px] md:left-[40px] w-12 h-12 rounded-full bg-[#111111] hover:bg-black flex items-center justify-center transition-colors border border-white/20 backdrop-blur-xl pointer-events-auto shadow-2xl"
+                  style={{ zIndex: 60 }}
                 >
-                  <ArrowLeft className="w-5 h-5 text-white" />
+                  <ArrowLeft className="w-6 h-6 text-white" />
                 </button>
-              ) : (
-                <div></div>
               )}
 
-              <button
-                onClick={toggleFullscreen}
-                className="bg-black/40 hover:bg-black/80 text-white border border-white/10 backdrop-blur-md h-10 w-10 rounded-lg flex items-center justify-center transition-all pointer-events-auto"
-                title={t('watch.fullscreen')}
-              >
-                <Maximize className="w-4 h-4" />
-              </button>
+              <div className="absolute top-[20px] right-[20px] flex gap-2 items-center pointer-events-auto">
+                {serverUrls.length > 0 && (
+                  <div className="relative">
+                    <select
+                      value={safeServerIndex}
+                      onChange={(e) => setActiveServerIndex(Number(e.target.value))}
+                      className="appearance-none bg-black/40 hover:bg-black/80 text-white font-semibold px-3 pr-8 h-10 text-xs md:text-sm rounded-lg border border-white/10 backdrop-blur-md cursor-pointer outline-none focus:ring-2 focus:ring-primary/50 transition-colors"
+                    >
+                      {serverUrls.map((url, index) => {
+                        let serverName = `Server ${index + 1}`;
+                        if (url.includes('vidlink')) serverName = 'VidLink';
+                        else if (url.includes('autoembed')) serverName = 'AutoEmbed';
+                        else if (url.includes('vidsrc')) serverName = 'VidSrc';
+                        else if (url.includes('smashy')) serverName = 'Smashy';
+                        else if (url.includes('flix')) serverName = 'Flix';
+                        else if (url.includes('vidplay')) serverName = 'VidPlay';
+                        else if (url.includes('xpass')) serverName = 'XPass';
+                        else if (url.includes('cinesrc')) serverName = 'CineSrc';
+                        else if (url.includes('vsembed')) serverName = 'VSEmbed';
+                        else if (url.includes('vixsrc')) serverName = 'VixSrc';
+                        else if (url.includes('vidzee')) serverName = 'Vidzee';
+                        else if (url.includes('primesrc')) serverName = 'PrimeSrc';
+                        return <option key={index} value={index} className="bg-black">{serverName}</option>;
+                      })}
+                    </select>
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                      <svg className="w-3 h-3 text-white/70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </div>
+                  </div>
+                )}
+                
+                <button
+                  onClick={toggleFullscreen}
+                  className="bg-black/40 hover:bg-black/80 text-white border border-white/10 backdrop-blur-md h-10 w-10 rounded-lg flex items-center justify-center transition-all pointer-events-auto"
+                  title={t('watch.fullscreen')}
+                >
+                  <Maximize className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           </div>
         ) : (
@@ -872,6 +945,30 @@ export default function Watch() {
                     </button>
                   )}
 
+                  {serverUrls.length > 0 && !isLocked && (
+                    <div className="relative pointer-events-auto">
+                      <select
+                        value={safeServerIndex}
+                        onChange={(e) => setActiveServerIndex(Number(e.target.value))}
+                        className={`appearance-none bg-black/60 hover:bg-black/80 text-white font-semibold px-3 pr-8 h-10 text-xs md:text-sm rounded-lg border border-white/10 backdrop-blur-md cursor-pointer outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-300 relative z-50 ${isLocked ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+                      >
+                        {serverUrls.map((url, index) => {
+                          let serverName = `Server ${index + 1}`;
+                          if (url.includes('vidlink')) serverName = 'VidLink';
+                          else if (url.includes('autoembed')) serverName = 'AutoEmbed';
+                          else if (url.includes('vidsrc')) serverName = 'VidSrc';
+                          else if (url.includes('smashy')) serverName = 'Smashy';
+                          else if (url.includes('flix')) serverName = 'Flix';
+                          else if (url.includes('vidplay')) serverName = 'VidPlay';
+                          return <option key={index} value={index} className="bg-black">{serverName}</option>;
+                        })}
+                      </select>
+                      <div className={`absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none z-50 transition-opacity duration-300 ${isLocked ? 'opacity-0' : 'opacity-100'}`}>
+                        <svg className="w-3 h-3 text-white/70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                      </div>
+                    </div>
+                  )}
+
                   <button
                     onClick={(e) => {
                       e.preventDefault();
@@ -985,6 +1082,39 @@ export default function Watch() {
                   )}
                   {t('watch.subtitle')}
                 </Button>
+
+                {/* Server Selector Dropdown */}
+                {serverUrls.length > 0 && (
+                  <div className="relative">
+                    <select
+                      value={safeServerIndex}
+                      onChange={(e) => {
+                        setActiveServerIndex(Number(e.target.value));
+                        setIsPlaying(true);
+                      }}
+                      className="appearance-none !h-auto bg-white/10 hover:bg-white/20 text-white font-semibold px-2.5 pr-8 md:px-6 md:pr-10 py-1 md:py-2 text-[10px] md:text-sm rounded-md md:rounded-lg border border-white/20 min-w-[100px] md:min-w-[140px] cursor-pointer outline-none focus:ring-2 focus:ring-primary/50 transition-colors"
+                    >
+                      {serverUrls.map((url, index) => {
+                        let serverName = `Server ${index + 1}`;
+                        if (url.includes('vidlink')) serverName = 'VidLink';
+                        else if (url.includes('autoembed')) serverName = 'AutoEmbed';
+                        else if (url.includes('vidsrc')) serverName = 'VidSrc';
+                        else if (url.includes('smashy')) serverName = 'Smashy';
+                        else if (url.includes('flix')) serverName = 'Flix';
+                        else if (url.includes('vidplay')) serverName = 'VidPlay';
+                        
+                        return (
+                          <option key={index} value={index} className="bg-black text-white">
+                            {serverName}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <div className="absolute right-2 md:right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                      <svg className="w-3 h-3 md:w-4 md:h-4 text-white/70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </div>
+                  </div>
+                )}
 
                 {/* Subtitle Popup Modal */}
                 <AnimatePresence>
