@@ -27,7 +27,6 @@ export default function Watch() {
   const { id: videoId } = useParams();
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
-  const [activeServer] = useState('primary-server');
   const [isPlaying, setIsPlaying] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
@@ -467,45 +466,6 @@ export default function Watch() {
 
   const baseUrl = playerBaseUrl.endsWith('/') ? playerBaseUrl : `${playerBaseUrl}/`;
 
-  const servers = useMemo(() => {
-    return [
-      {
-        id: 'primary-server',
-        label: 'Server Utama',
-        url: video => {
-          const isTv = video.content_type === 'tv';
-          const tmdbId = video.tmdb_id;
-          const s = video.season || 1;
-          const e = video.episode || 1;
-
-          // Deteksi otomatis format berdasarkan domain untuk akurasi lebih tinggi
-          if (baseUrl.includes('vidsrcme.ru')) {
-            return isTv
-              ? `${baseUrl}tv?tmdb=${tmdbId}&season=${s}&episode=${e}`
-              : `${baseUrl}movie?tmdb=${tmdbId}`;
-          }
-
-          if (baseUrl.includes('vidsrc.xyz')) {
-            return isTv
-              ? `${baseUrl}tv/${tmdbId}/${s}/${e}`
-              : `${baseUrl}movie/${tmdbId}`;
-          }
-
-          if (baseUrl.includes('vidsrc.to') || baseUrl.includes('vidsrc.me')) {
-            return isTv
-              ? `${baseUrl}embed/tv/${tmdbId}/${s}/${e}`
-              : `${baseUrl}embed/movie/${tmdbId}`;
-          }
-
-          // Fallback umum jika domain tidak dikenal
-          return isTv
-            ? `${baseUrl}tv/${tmdbId}/${s}/${e}`
-            : `${baseUrl}movie/${tmdbId}`;
-        }
-      }
-    ];
-  }, [baseUrl]);
-
   const { data: video, isLoading } = useQuery({
     queryKey: ['video', videoId],
     queryFn: () => VideoStore.filter({ id: videoId }),
@@ -625,8 +585,32 @@ export default function Watch() {
     );
   }
 
-  const selectedServer = servers.find(s => s.id === activeServer);
-  const vidsrcUrl = video?.tmdb_id && selectedServer ? selectedServer.url(video) : null;
+  let vidsrcUrl = null;
+  if (video?.tmdb_id) {
+    const isTv = video.content_type === 'tv';
+    const tmdbId = video.tmdb_id;
+    const s = video.season || 1;
+    const e = video.episode || 1;
+
+    if (baseUrl.includes('vidsrcme.ru')) {
+      vidsrcUrl = isTv
+        ? `${baseUrl}tv?tmdb=${tmdbId}&season=${s}&episode=${e}`
+        : `${baseUrl}movie?tmdb=${tmdbId}`;
+    } else if (baseUrl.includes('vidsrc.xyz')) {
+      vidsrcUrl = isTv
+        ? `${baseUrl}tv/${tmdbId}/${s}/${e}`
+        : `${baseUrl}movie/${tmdbId}`;
+    } else if (baseUrl.includes('vidsrc.to') || baseUrl.includes('vidsrc.me')) {
+      vidsrcUrl = isTv
+        ? `${baseUrl}embed/tv/${tmdbId}/${s}/${e}`
+        : `${baseUrl}embed/movie/${tmdbId}`;
+    } else {
+      // Fallback umum jika domain tidak dikenal (seperti vidsrc.pm atau vidlink.pro)
+      vidsrcUrl = isTv
+        ? `${baseUrl}tv/${tmdbId}/${s}/${e}`
+        : `${baseUrl}movie/${tmdbId}`;
+    }
+  }
 
   const iframeProps = (baseUrl.includes('vidsrcme.ru') || baseUrl.includes('superembed'))
     ? {

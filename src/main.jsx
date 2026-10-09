@@ -5,6 +5,15 @@ import '@/index.css'
 import { Capacitor } from '@capacitor/core'
 import { StatusBar, Style } from '@capacitor/status-bar'
 
+// Unregister any old service workers
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then((registrations) => {
+    for (let registration of registrations) {
+      registration.unregister();
+    }
+  });
+}
+
 if (Capacitor.isNativePlatform()) {
   try {
     StatusBar.setOverlaysWebView({ overlay: true }).catch(() => {});
